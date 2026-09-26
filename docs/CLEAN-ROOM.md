@@ -46,3 +46,4 @@ Rules:
 |---|---|---|---|---|
 | 2026-09-26 | `src/anycubic_lan/` @ `b7c0042` | `hass-anycubic` integration, `anycubic-cloud-api` library, `WaresWichall/hass-anycubic_cloud` | 6 — alphabetised stdlib imports (`hashlib, json, re, secrets, string, time`); next 4 — the standard `ssl` no-verification idiom | Clean: both are dictated by the language, not copied expression |
 | 2026-09-26 | `tests/` @ `b7c0042` | the same, plus `anycubic-cloud-api/tests` | 15 — the captured `info.project` payload | Expected: data captured from a printer, copied from `PROTOCOL.md` §6.2 |
+| 2026-09-26 | `src/anycubic_lan/` @ `b87f11e` (after round 2) | same three projects | 6 — the same stdlib import block; next 4 — the same `ssl` idiom | Clean; unchanged by round 2 |
