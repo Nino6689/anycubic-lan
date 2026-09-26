@@ -389,8 +389,9 @@ light is **`type: 2`**.
 
 ### 6.7 `multiColorBox` — ACE filament hub
 
-Queried with action **`getInfo`** (it stays silent for `query`). `data`
-contains a list of boxes; each box:
+Queried with action **`getInfo`** (it stays silent for `query`); the reply's
+`state` is **`success`**, not `done`. The boxes are the list under
+**`data.multi_color_box`** (see `QUESTIONS.md` Q1 for every action); each box:
 
 ```json
 {
