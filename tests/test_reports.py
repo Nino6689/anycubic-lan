@@ -448,8 +448,17 @@ def test_axis_move_done_null_data() -> None:
 
 
 def test_multi_color_box() -> None:
-    report = _parse(message("multiColorBox", {"multi_color_box": [ACE_BOX]}))
+    report = _parse(
+        message(
+            "multiColorBox",
+            {"multi_color_box": [ACE_BOX]},
+            action="getInfo",
+            state="success",
+        )
+    )
     assert isinstance(report, MultiColorBoxReport)
+    assert report.is_full_list
+    assert report.envelope.is_completed
     assert report.boxes is not None
     (box,) = report.boxes
     assert isinstance(box, AceBox)
@@ -470,6 +479,55 @@ def test_multi_color_box() -> None:
     assert slot.status == 5
     assert slot.edit_status == 0
     assert slot.is_loaded
+    assert box.feed_status is None
+
+
+@pytest.mark.parametrize("state", ["success", "done"])
+def test_get_info_success_and_done_are_both_full(state: str) -> None:
+    # Q1 in docs/QUESTIONS.md: success and done are equivalent.
+    report = _parse(
+        message(
+            "multiColorBox",
+            {"multi_color_box": [ACE_BOX]},
+            action="getInfo",
+            state=state,
+        )
+    )
+    assert report.is_full_list
+
+
+@pytest.mark.parametrize(
+    ("action", "state"),
+    [
+        ("getInfo", "failed"),
+        ("setInfo", "success"),
+        ("refresh", "success"),
+        ("autoUpdateInfo", "done"),
+        ("autoUpdateDryStatus", "success"),
+        ("setDry", "success"),
+        ("feedFilament", "done"),
+    ],
+)
+def test_other_ace_actions_are_partial(action: str, state: str) -> None:
+    report = _parse(
+        message(
+            "multiColorBox",
+            {"multi_color_box": [{"id": 0, "loaded_slot": 1}]},
+            action=action,
+            state=state,
+        )
+    )
+    assert report.boxes is not None
+    assert not report.is_full_list
+
+
+@pytest.mark.parametrize("raw", [3, "feeding", None, True, 1.5])
+def test_feed_status(raw: Any) -> None:
+    box = AceBox.from_data({"id": 0, "loaded_slot": 1, "feed_status": raw})
+    expected = (
+        raw if isinstance(raw, (str, int)) and not isinstance(raw, bool) else None
+    )
+    assert box.feed_status == expected
 
 
 def test_loaded_slot_minus_one_falls_back_to_status_5() -> None:
@@ -523,7 +581,10 @@ def test_multi_color_box_data_is_list() -> None:
 def test_multi_color_box_without_boxes() -> None:
     assert _parse(message("multiColorBox", {"x": 1})).boxes is None
     assert _parse(message("multiColorBox", None)).boxes is None
-    empty = _parse(message("multiColorBox", {"boxes": []}))
+    # Only data.multi_color_box holds the list (Q1), not any other list.
+    assert _parse(message("multiColorBox", {"boxes": [ACE_BOX]})).boxes is None
+    assert _parse(message("multiColorBox", {"multi_color_box": {}})).boxes is None
+    empty = _parse(message("multiColorBox", {"multi_color_box": []}))
     assert empty.boxes == ()
 
 

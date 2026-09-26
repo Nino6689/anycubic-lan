@@ -219,12 +219,130 @@ def test_axis_without_coordinates_keeps_position() -> None:
     assert state.position == Position(x=47, y=276, z=3.8152532726237904)
 
 
+def ace(action: str, state: str, *boxes: Any, **envelope: Any) -> dict[str, Any]:
+    """A multiColorBox report in the shape of Q1 in docs/QUESTIONS.md."""
+    return message(
+        "multiColorBox",
+        {"multi_color_box": list(boxes)},
+        action=action,
+        state=state,
+        **envelope,
+    )
+
+
+SECOND_BOX: dict[str, Any] = {**ACE_BOX, "id": 1, "temp": 30}
+
+
 def test_ace_boxes_replace() -> None:
-    state = apply(PrinterState(), message("multiColorBox", {"boxes": [ACE_BOX]}))
-    assert len(state.ace_boxes) == 1
+    state = apply(PrinterState(), ace("getInfo", "success", ACE_BOX, SECOND_BOX))
+    assert [b.id for b in state.ace_boxes] == [0, 1]
     assert state.ace_boxes[0].loaded_slot == 0
     state = apply(state, message("multiColorBox", None))
-    assert len(state.ace_boxes) == 1  # nothing found: kept
+    assert len(state.ace_boxes) == 2  # nothing found: kept
+    state = apply(state, ace("getInfo", "done", ACE_BOX))
+    assert [b.id for b in state.ace_boxes] == [0]  # a full list replaces
+
+
+def test_ace_bare_list_tolerated() -> None:
+    state = apply(
+        PrinterState(),
+        {
+            "type": "multiColorBox",
+            "action": "getInfo",
+            "state": "success",
+            "data": [ACE_BOX],
+        },
+    )
+    assert len(state.ace_boxes) == 1
+
+
+def test_ace_auto_update_info_changes_loaded_slot_only() -> None:
+    state = apply(
+        PrinterState(),
+        ace("getInfo", "success", ACE_BOX, SECOND_BOX),
+        ace("autoUpdateInfo", "done", {"id": 1, "loaded_slot": 0}),
+    )
+    first, second = state.ace_boxes
+    assert second.loaded_slot_raw == 0
+    assert second.temp == 30
+    assert len(second.slots) == 1
+    assert second.drying is not None
+    assert first.loaded_slot_raw == -1
+
+
+def test_ace_dry_status_updates_temp_and_drying() -> None:
+    drying = {"status": 1, "target_temp": 55, "duration": 240, "remain_time": 200}
+    for action in ("autoUpdateDryStatus", "setDry"):
+        state = apply(
+            PrinterState(),
+            ace("getInfo", "success", ACE_BOX),
+            ace(action, "success", {"id": 0, "temp": 41, "drying_status": drying}),
+            ace(action, "success", {"id": 0, "drying_status": {"remain_time": 190}}),
+        )
+        (box,) = state.ace_boxes
+        assert box.temp == 41
+        assert box.drying is not None
+        assert box.drying.is_drying
+        assert box.drying.target_temp == 55
+        assert box.drying.remain_time == 190
+        assert box.slots[0].material == "PLA"
+
+
+def test_ace_drying_reported_for_box_without_drying() -> None:
+    state = apply(
+        PrinterState(),
+        ace("getInfo", "success", {"id": 0, "temp": 25}),
+        ace("setDry", "success", {"id": 0, "drying_status": {"status": 1}}),
+    )
+    assert state.ace_boxes[0].drying is not None
+    assert state.ace_boxes[0].drying.is_drying
+
+
+def test_ace_set_info_and_refresh_update_slots() -> None:
+    new_slot = {"index": 0, "type": "PETG", "color": [0, 0, 0], "edit_status": 1}
+    extra_slot = {"index": 1, "type": "ABS", "status": 4}
+    for action in ("setInfo", "refresh"):
+        state = apply(
+            PrinterState(),
+            ace("getInfo", "success", ACE_BOX),
+            ace(action, "success", {"id": 0, "slots": [new_slot, extra_slot]}),
+        )
+        (box,) = state.ace_boxes
+        assert [s.material for s in box.slots] == ["PETG", "ABS"]
+        assert box.slots[0].color == (0, 0, 0)
+        assert box.slots[0].status == 5  # not reported: kept
+        assert box.temp == 25
+
+
+def test_ace_feed_filament() -> None:
+    state = apply(
+        PrinterState(),
+        ace("getInfo", "success", ACE_BOX),
+        ace("feedFilament", "done", {"id": 0, "loaded_slot": 0, "feed_status": 1}),
+    )
+    (box,) = state.ace_boxes
+    assert box.loaded_slot == 0
+    assert box.feed_status == 1
+
+
+def test_ace_partial_before_full_list_and_without_id() -> None:
+    state = apply(
+        PrinterState(),
+        ace("autoUpdateInfo", "done", {"id": 1, "loaded_slot": 2}),
+        ace("autoUpdateInfo", "done", {"loaded_slot": 3}),  # no id: dropped
+    )
+    (box,) = state.ace_boxes
+    assert (box.id, box.loaded_slot) == (1, 2)
+
+
+def test_ace_failed_report_changes_nothing() -> None:
+    state = apply(
+        PrinterState(),
+        ace("getInfo", "success", ACE_BOX),
+        ace("setDry", "failed", {"id": 0, "temp": 99}, code=10801),
+    )
+    assert state.ace_boxes[0].temp == 25
+    assert state.last_error_code == 10801
 
 
 def test_ai_settings_and_peripherals_merge() -> None:

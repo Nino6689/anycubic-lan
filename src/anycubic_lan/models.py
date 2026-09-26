@@ -24,6 +24,13 @@ DEFAULT_LIGHT_TYPE = 2
 #: Slot ``status`` meaning "this slot feeds the printer" (PROTOCOL.md §6.7).
 SLOT_STATUS_LOADED = 5
 
+#: Envelope ``state`` words meaning "completed". ``success`` and ``done`` are
+#: equivalent for every report kind (Q1 in docs/QUESTIONS.md).
+COMPLETED_STATES = frozenset({"success", "done"})
+
+#: Envelope ``state`` of a command the printer refused (Q2).
+STATE_FAILED = "failed"
+
 #: Job ``state`` words meaning the job is over (Q3 in docs/QUESTIONS.md).
 #: ``stoped`` is the firmware's own spelling; both ``canceled`` and
 #: ``cancelled`` occur.
@@ -126,6 +133,12 @@ class ReportKind(StrEnum):
     AXIS = "axis"
     EXTERNAL_FILAMENT_BOX = "extfilbox"
 
+
+#: ``multiColorBox`` action whose answer is the full box list (Q1). Other
+#: actions (``setInfo``, ``refresh``, ``autoUpdateInfo``,
+#: ``autoUpdateDryStatus``, ``setDry``, ``feedFilament``) carry only the boxes
+#: and fields they changed.
+ACE_FULL_LIST_ACTION = "getInfo"
 
 #: Query action per kind (PROTOCOL.md §7.1). ``multiColorBox`` only answers
 #: ``getInfo``.

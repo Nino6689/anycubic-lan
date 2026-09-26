@@ -21,12 +21,15 @@ from types import MappingProxyType
 from typing import Any, cast
 
 from .models import (
+    ACE_FULL_LIST_ACTION,
+    COMPLETED_STATES,
     DEFAULT_LIGHT_TYPE,
     JOB_OVER_STATES,
     JOB_PAUSED_STATES,
     JOB_RESUMING_STATES,
     JOB_STOPPING_STATES,
     SLOT_STATUS_LOADED,
+    STATE_FAILED,
     PrinterStatus,
     PrintStatus,
     ReportKind,
@@ -136,6 +139,16 @@ class Envelope:
     def is_error(self) -> bool:
         """``True`` when the printer reported a code other than 0 or 200."""
         return self.code is not None and self.code not in OK_CODES
+
+    @property
+    def is_completed(self) -> bool:
+        """``state`` is ``success`` or ``done`` (equivalent for every kind)."""
+        return self.state in COMPLETED_STATES
+
+    @property
+    def is_failed(self) -> bool:
+        """``state`` is ``failed``: the printer refused a command."""
+        return self.state == STATE_FAILED
 
 
 @dataclass(frozen=True, slots=True)
@@ -342,6 +355,8 @@ class AceBox:
     temp: Number | None = None
     drying: AceDrying | None = None
     slots: tuple[AceSlot, ...] = ()
+    feed_status: int | str | None = None
+    """``feed_status`` from a ``feedFilament`` report, kept raw (Q1)."""
 
     @classmethod
     def from_data(cls, data: Mapping[str, Any]) -> AceBox:
@@ -369,7 +384,21 @@ class AceBox:
             temp=_num(data.get("temp")),
             drying=drying,
             slots=slots,
+            feed_status=_feed_status(data.get("feed_status")),
         )
+
+    def updated_with(self, new: AceBox) -> AceBox:
+        """Return this box with the fields ``new`` reports applied.
+
+        Partial reports (Q1 in docs/QUESTIONS.md) carry only what changed:
+        slots are merged by index and ``drying_status`` field by field.
+        """
+        merged = _merge(self, replace(new, drying=None, slots=self.slots))
+        drying = self.drying
+        if new.drying is not None:
+            drying = _merge(drying, new.drying) if drying is not None else new.drying
+        slots = _merge_slots(self.slots, new.slots) if new.slots else self.slots
+        return replace(merged, drying=drying, slots=slots)
 
     @property
     def loaded_slot(self) -> int | None:
@@ -384,6 +413,25 @@ class AceBox:
             if slot.is_loaded:
                 return slot.index
         return None
+
+
+def _feed_status(value: object) -> int | str | None:
+    return _int(value) if not isinstance(value, str) else value
+
+
+def _merge_slots(
+    old: tuple[AceSlot, ...], new: tuple[AceSlot, ...]
+) -> tuple[AceSlot, ...]:
+    """Merge reported slots into the known ones, matching by ``index``."""
+    slots = list(old)
+    for slot in new:
+        for i, known in enumerate(slots):
+            if slot.index is not None and known.index == slot.index:
+                slots[i] = _merge(known, slot)
+                break
+        else:
+            slots.append(slot)
+    return tuple(slots)
 
 
 @dataclass(frozen=True, slots=True)
@@ -476,12 +524,22 @@ class AxisReport(Report):
 
 @dataclass(frozen=True, slots=True)
 class MultiColorBoxReport(Report):
-    """``multiColorBox`` report (PROTOCOL.md §6.7).
+    """``multiColorBox`` report (PROTOCOL.md §6.7, Q1 in docs/QUESTIONS.md).
 
     ``boxes`` is ``None`` when no box list could be found in the payload.
     """
 
     boxes: tuple[AceBox, ...] | None = None
+
+    @property
+    def is_full_list(self) -> bool:
+        """``True`` for a completed ``getInfo`` answer: every box, every field.
+
+        Every other action carries only the boxes and fields it changed.
+        """
+        return (
+            self.envelope.action == ACE_FULL_LIST_ACTION and self.envelope.is_completed
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -653,17 +711,14 @@ def _parse_axis(envelope: Envelope, data: Mapping[str, Any] | None) -> Report:
 
 
 def _find_boxes(raw: object) -> list[Any] | None:
-    # Q1 in docs/QUESTIONS.md: the key holding the box list inside ``data`` is
-    # not documented. Accept ``data`` being the list itself, or the first
-    # value inside ``data`` that is a list of objects.
+    # Q1 in docs/QUESTIONS.md: the boxes are the list under
+    # ``data.multi_color_box``. A bare list as ``data`` is tolerated too.
     if isinstance(raw, list):
         return raw
     if (data := _map(raw)) is None:
         return None
-    for value in data.values():
-        if isinstance(value, list) and all(isinstance(v, Mapping) for v in value):
-            return value
-    return None
+    boxes = data.get("multi_color_box")
+    return boxes if isinstance(boxes, list) else None
 
 
 def _parse_multi_color_box(
@@ -850,8 +905,8 @@ class PrinterState:
                 return state._apply_lights(report)
             case AxisReport(position=Position() as position):
                 return replace(state, position=position)
-            case MultiColorBoxReport(boxes=tuple() as boxes):
-                return replace(state, ace_boxes=boxes)
+            case MultiColorBoxReport(boxes=tuple()):
+                return state._apply_ace(report)
             case AiSettingsReport():
                 return replace(
                     state,
@@ -916,6 +971,24 @@ class PrinterState:
         if report.last_project_reported:
             changes["last_job"] = report.last_project
         return replace(state, **changes)
+
+    def _apply_ace(self, report: MultiColorBoxReport) -> PrinterState:
+        boxes = report.boxes or ()
+        if report.envelope.is_failed:
+            return self
+        if report.is_full_list:
+            return replace(self, ace_boxes=boxes)
+        known = list(self.ace_boxes)
+        for box in boxes:
+            if box.id is None:
+                continue  # a partial update cannot be matched to a box
+            for i, old in enumerate(known):
+                if old.id == box.id:
+                    known[i] = old.updated_with(box)
+                    break
+            else:
+                known.append(box)
+        return replace(self, ace_boxes=tuple(known))
 
     def _apply_lights(self, report: LightReport) -> PrinterState:
         if report.full_list:
