@@ -69,10 +69,26 @@ def test_envelope_fields() -> None:
     assert not env.is_error
 
 
-def test_envelope_accepts_str_payload_and_string_code() -> None:
-    report = _parse(json.dumps({**ENVELOPE, "code": "10801"}))
+def test_envelope_accepts_str_payload() -> None:
+    report = _parse(json.dumps({**ENVELOPE, "code": 10801}))
     assert report.envelope.code == 10801
     assert report.envelope.is_error
+
+
+@pytest.mark.parametrize("code", [0, 200])
+def test_envelope_ok_codes(code: int) -> None:
+    # Q4 in docs/QUESTIONS.md: 0 and 200 both mean OK.
+    report = _parse({**ENVELOPE, "code": code})
+    assert report.envelope.code == code
+    assert not report.envelope.is_error
+
+
+@pytest.mark.parametrize("code", ["10801", "200", 200.0, 1.5, True, False, None, [1]])
+def test_envelope_non_integer_code_is_absent(code: Any) -> None:
+    # Q4 in docs/QUESTIONS.md: a non-integer or boolean code is absent.
+    report = _parse({**ENVELOPE, "code": code})
+    assert report.envelope.code is None
+    assert not report.envelope.is_error
 
 
 def test_envelope_bad_values_become_none() -> None:

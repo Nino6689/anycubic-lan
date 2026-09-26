@@ -40,6 +40,9 @@ _KNOWN_KINDS = frozenset(kind.value for kind in ReportKind)
 #: ``code`` meaning "processed / nothing wrong" (PROTOCOL.md §5).
 CODE_OK = 200
 
+#: Every ``code`` that means OK: 0 and 200 (Q4 in docs/QUESTIONS.md).
+OK_CODES = frozenset({0, CODE_OK})
+
 
 # --------------------------------------------------------------------------
 # Field helpers: each returns None for anything it does not recognise and
@@ -90,14 +93,10 @@ def _int_tuple(value: object) -> tuple[int, ...] | None:
 
 
 def _code(value: object) -> int | None:
-    parsed = _int(value)
-    if (
-        parsed is None
-        and isinstance(value, str)
-        and value.strip().lstrip("-").isdigit()
-    ):
-        parsed = int(value.strip())
-    return parsed
+    # Q4 in docs/QUESTIONS.md: a non-integer or boolean ``code`` is absent.
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
 
 
 def _merge[T](old: T, new: T) -> T:
@@ -131,8 +130,8 @@ class Envelope:
 
     @property
     def is_error(self) -> bool:
-        """``True`` when the printer reported a code other than 200."""
-        return self.code is not None and self.code != CODE_OK
+        """``True`` when the printer reported a code other than 0 or 200."""
+        return self.code is not None and self.code not in OK_CODES
 
 
 @dataclass(frozen=True, slots=True)
@@ -722,7 +721,7 @@ _PARSERS = {
 
 @dataclass(frozen=True, slots=True)
 class ReportCode:
-    """A non-200 ``code`` the printer reported for one report kind."""
+    """A non-OK ``code`` the printer reported for one report kind."""
 
     kind: str
     code: int
@@ -761,7 +760,7 @@ class PrinterState:
     peripherals: Peripherals | None = None
     external_filament_box: Mapping[str, Any] | None = field(default=None, repr=False)
     errors: Mapping[str, ReportCode] = _EMPTY_ERRORS
-    """Open non-200 codes per report kind, oldest first."""
+    """Open non-OK codes per report kind, oldest first."""
 
     # -- derived values ---------------------------------------------------
 
@@ -788,9 +787,12 @@ class PrinterState:
 
     @property
     def last_error(self) -> ReportCode | None:
-        """The most recent non-200 code that has not been cleared since."""
-        # Q4 in docs/QUESTIONS.md: when a printer error "clears" is not
-        # documented; a later code 200 for the same report kind clears it.
+        """The most recent non-OK code that has not been cleared since.
+
+        The printer sends no explicit "cleared" message, so a later OK code
+        (0 or 200) for the same report kind clears it (Q4 in
+        docs/QUESTIONS.md).
+        """
         if not self.errors:
             return None
         return list(self.errors.values())[-1]
@@ -858,7 +860,7 @@ class PrinterState:
             return self
         errors = dict(self.errors)
         errors.pop(envelope.kind, None)
-        if envelope.code != CODE_OK:
+        if envelope.code not in OK_CODES:
             errors[envelope.kind] = ReportCode(
                 envelope.kind, envelope.code, envelope.msg
             )

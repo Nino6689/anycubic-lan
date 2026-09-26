@@ -250,6 +250,25 @@ def test_error_codes() -> None:
     assert state.last_error is None
 
 
+def test_code_zero_clears_like_200() -> None:
+    # Q4 in docs/QUESTIONS.md: 0 and 200 both mean OK.
+    state = apply(
+        PrinterState(), message("multiColorBox", None, code=10801, msg="runout")
+    )
+    assert state.last_error_code == 10801
+    state = apply(state, message("multiColorBox", None, code=0))
+    assert state.last_error is None
+
+
+def test_non_integer_code_neither_raises_nor_clears() -> None:
+    state = apply(
+        PrinterState(), message("multiColorBox", None, code=10801, msg="runout")
+    )
+    for code in ("200", True, 200.0):
+        state = apply(state, message("multiColorBox", None, code=code))
+    assert state.last_error_code == 10801
+
+
 def test_state_is_immutable_and_apply_returns_new() -> None:
     before = PrinterState()
     after = apply(before, INFO_IDLE)
