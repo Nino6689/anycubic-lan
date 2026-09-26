@@ -85,8 +85,8 @@ earlier) are detected and refused as unsupported.
 ## Status
 
 Version 0.1.0, alpha. The specification in [`docs/`](docs/) comes first; the
-implementation follows it. Open points are listed in
-[`docs/QUESTIONS.md`](docs/QUESTIONS.md). See
+implementation follows it. Questions to the specification team and their
+answers are in [`docs/QUESTIONS.md`](docs/QUESTIONS.md). See
 [`docs/CLEAN-ROOM.md`](docs/CLEAN-ROOM.md) for how this library was written
 and by whom.
 

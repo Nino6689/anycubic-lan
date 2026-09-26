@@ -25,6 +25,8 @@ What is the exact key?
 
 Treat `success` and `done` as equivalent "completed" states for every kind.
 
+**Applied in round 2.**
+
 ## Q2 — Shape of the `print` report
 
 *Asked by the implementation team, 2026-09-26.*
@@ -47,6 +49,8 @@ is still recorded.
 
 A failed command arrives with `state: failed` and a non-200 `code`. Keeping `info.project` as the authoritative job is correct (the `print` kind is silent when idle); applying `print` reports as well is welcome but optional.
 
+**Applied in round 2.**
+
 ## Q3 — Full list of job `state` words
 
 *Asked by the implementation team, 2026-09-26.*
@@ -57,6 +61,8 @@ Which words mean the job is over (e.g. `stopped`, `canceled`, `failed`)?
 or `state` is `finished`; paused when `pause` is 1 or `state` is `paused`.
 
 **Answer (specification team, 2026-09-26):** Job `state` words observed: `downloading`, `checking`, `preheating`, `auto_leveling`, `printing`, `pausing`, `paused`, `resuming`, `resumed`, `stopping`, `stopped`, `stoped` (sic), `finished`, `failed`, `canceled` and `cancelled` (both spellings occur). **Over** = `finished`, `stopped`, `stoped`, `failed`, `canceled`, `cancelled`, or `print_status` 2/3. `busy`/`free` are *printer* states (§6.1), not job states.
+
+**Applied in round 2.**
 
 ## Q4 — When is a non-200 `code` cleared?
 
@@ -70,6 +76,8 @@ the same kind carries `code: 200`; `last_error` is the most recent open one.
 
 **Answer (specification team, 2026-09-26):** Codes **`0` and `200` both mean OK**. No observation shows the printer sending an explicit "cleared" message. Your interim rule (clear on the next OK code from the same kind) is the right behaviour; also treat a non-integer or boolean `code` as absent.
 
+**Applied in round 2.**
+
 ## Q5 — Type of `modelId`
 
 *Asked by the implementation team, 2026-09-26.*
@@ -78,6 +86,8 @@ Is `modelId` always a JSON integer? **Interim choice**: an integer, or a
 string of digits, is accepted; anything else is "unsupported printer".
 
 **Answer (specification team, 2026-09-26):** In the discovery document `modelId` is a JSON **integer** on both tested printers (`20025`, `20030`). In topics it appears as the same digits. Accepting a digit string too is fine.
+
+**Applied in round 2.**
 
 ## Q6 — `ctrlType` values other than `lan` / `cloud`
 
@@ -89,6 +99,8 @@ anything else (including missing) is "unsupported printer".
 
 **Answer (specification team, 2026-09-26):** Only `"lan"` and `"cloud"` have been observed. Your interim choice stands.
 
+**Applied in round 2.**
+
 ## Q7 — Broker URL with `mqtt://`
 
 *Asked by the implementation team, 2026-09-26.*
@@ -99,6 +111,8 @@ the scheme is kept in `BrokerCredentials.scheme` for diagnostics.
 
 **Answer (specification team, 2026-09-26):** Only `mqtts://` has been observed, always with TLS on port 9883. Always using TLS is correct.
 
+**Applied in round 2.**
+
 ## Q8 — MQTT QoS for queries and commands
 
 *Asked by the implementation team, 2026-09-26.*
@@ -107,6 +121,8 @@ Which QoS does the printer expect, and which does it publish reports with?
 **Interim choice**: publish with QoS 0 and subscribe with QoS 0.
 
 **Answer (specification team, 2026-09-26):** QoS **0** for both publishing and subscribing is what has been used against real hardware and works. Keep it.
+
+**Applied in round 2.**
 
 ## Q9 — Brightness carried by a light "off" command
 
@@ -119,3 +135,5 @@ brightness of that light (0 if none is known); switching on without a
 brightness resends the last known one, or 100.
 
 **Answer (specification team, 2026-09-26):** Switching **off** sends `{"type": 2, "status": 0, "brightness": 0}` — brightness **0** — and this has driven real hardware. Switching on sends `status: 1` with the requested brightness, or **100** when none is given. Do not rely on the printer remembering a previous brightness.
+
+**Applied in round 2.**

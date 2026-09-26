@@ -37,8 +37,8 @@ Rules:
 |---|---|---|---|---|---|
 | 2026-09-26 | Specification | Claude (local, Nino's machine) | Captured payloads from Nino's Kobra S1; Kobra X logs from a user; the public `anycubic_ha_local` protocol description; notes from testing the fork | `PROTOCOL.md`, `INTEGRATION-SPEC.md`, this file, `LICENSE`, `README.md`, CI workflows | n/a — specification team |
 | 2026-09-26 | Implementation | Claude cloud session (routine) | `docs/CLEAN-ROOM.md`, `docs/PROTOCOL.md`, `docs/INTEGRATION-SPEC.md`, `docs/QUESTIONS.md`, `README.md`, `LICENSE`, CI workflows; general knowledge of the Python, aiohttp, paho-mqtt, cryptography and pytest APIs and the installed packages themselves (no web searches, no Anycubic code) | `src/anycubic_lan/` (v0.1.0), `tests/`, `pyproject.toml`, `.gitignore`, README sections, questions Q1–Q9 in `QUESTIONS.md` | Yes |
-
 | 2026-09-26 | Specification | Claude (local) | The v0.1.0 implementation (for acceptance only); the GPL projects (for the similarity check) | Answers to Q1–Q9 in `QUESTIONS.md`; `PROTOCOL.md` §6.7 corrected; similarity checks below | n/a — specification team |
+| 2026-09-26 | Implementation | Claude cloud session (routine, round 2) | `docs/QUESTIONS.md` (answers to Q1–Q9), `docs/PROTOCOL.md` (incl. corrected §6.7), `docs/INTEGRATION-SPEC.md`, `docs/CLEAN-ROOM.md`, `README.md`, the CI workflow, this branch's own code and tests; the installed Python, paho-mqtt, pytest, mypy and ruff (no web searches, no Anycubic code) | `src/anycubic_lan/` and `tests/` updated for Q1–Q4 and Q9, comments for Q5–Q8; "Applied in round 2" marks in `QUESTIONS.md`; README status line; this row | Yes |
 
 ## Similarity checks
 
