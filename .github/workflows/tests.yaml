@@ -8,8 +8,6 @@ on:
 
 jobs:
   test:
-    # Nothing to test until the implementation lands; the spec comes first.
-    if: ${{ hashFiles('pyproject.toml') != '' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
