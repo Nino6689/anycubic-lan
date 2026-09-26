@@ -638,6 +638,27 @@ def test_print_report_command_answer() -> None:
     report = _parse(message("print", None, action="pause", code=200, msgid="abc"))
     assert report.job is None
     assert report.envelope.msgid == "abc"
+    assert report.job_state is None  # "done" is not a job state
+    assert not report.command_failed
+
+
+def test_print_report_taskid() -> None:
+    # Q2 in docs/QUESTIONS.md: the print report carries the task id as taskid.
+    for raw in ("614707220", 614707220, " 614707220 "):
+        report = _parse(message("print", {"taskid": raw}, state="paused"))
+        assert report.job.task_id == 614707220
+        assert report.job_state == "paused"
+    assert _parse(message("print", {"taskid": "x1"})).job.task_id is None
+    assert _parse(message("print", {"taskid": True})).job.task_id is None
+
+
+@pytest.mark.parametrize(
+    ("state", "code"), [("failed", 10500), ("failed", None), ("stopped", 10500)]
+)
+def test_print_report_failed(state: str, code: int | None) -> None:
+    report = _parse(message("print", {"taskid": "1"}, state=state, code=code))
+    assert report.command_failed
+    assert report.job_state is None
 
 
 def test_speed_mode_enum() -> None:

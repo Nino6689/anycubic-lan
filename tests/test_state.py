@@ -371,12 +371,137 @@ def test_extfilbox_and_unknown() -> None:
     assert state.external_filament_box == {"a": 1}
 
 
-def test_print_report_does_not_touch_job() -> None:
+def print_report(action: str, state: str, **fields: Any) -> dict[str, Any]:
+    """A print report in the shape of Q2 in docs/QUESTIONS.md: the project
+    block with the task id under ``taskid``."""
+    data = {k: v for k, v in PROJECT.items() if k != "task_id"}
+    data["taskid"] = str(PROJECT["task_id"])
+    data.update(fields)
+    return message("print", data, action=action, state=state, code=200)
+
+
+@pytest.mark.parametrize(
+    ("action", "job_state", "status"),
+    [
+        ("start", "downloading", PrinterStatus.PRINTING),
+        ("start", "checking", PrinterStatus.PRINTING),
+        ("start", "preheating", PrinterStatus.PRINTING),
+        ("start", "printing", PrinterStatus.PRINTING),
+        ("pause", "pausing", PrinterStatus.PAUSED),
+        ("pause", "paused", PrinterStatus.PAUSED),
+        ("resume", "resuming", PrinterStatus.PRINTING),
+        ("resume", "resumed", PrinterStatus.PRINTING),
+        ("stop", "stopping", PrinterStatus.BUSY),
+    ],
+)
+def test_print_report_updates_job(
+    action: str, job_state: str, status: PrinterStatus
+) -> None:
     state = apply(
-        PrinterState(), info_with(project=PROJECT), message("print", {"task_id": 9})
+        PrinterState(),
+        info_with(state="busy", project=PROJECT),
+        print_report(action, job_state, progress=65),
     )
     assert state.job is not None
     assert state.job.task_id == 614707220
+    assert state.job.state == job_state
+    assert state.job.progress == 65
+    assert state.job.total_layers == 5
+    assert state.status is status
+
+
+@pytest.mark.parametrize(
+    ("action", "job_state"),
+    [("start", "finished"), ("stop", "stopped"), ("stop", "stoped")],
+)
+def test_print_report_ends_job(action: str, job_state: str) -> None:
+    state = apply(
+        PrinterState(),
+        info_with(state="free", project=PROJECT),
+        print_report(action, job_state),
+    )
+    assert state.job is not None
+    assert state.job.is_finished
+    assert state.status is PrinterStatus.IDLE
+    # info.project stays authoritative: null clears the job.
+    state = apply(state, INFO_IDLE)
+    assert state.job is None
+
+
+def test_print_report_starts_job_when_none_known() -> None:
+    state = apply(PrinterState(), INFO_IDLE, print_report("start", "preheating"))
+    assert state.job is not None
+    assert state.job.task_id == 614707220
+    assert state.status is PrinterStatus.PRINTING
+
+
+def test_print_report_does_not_revive_an_over_job() -> None:
+    state = apply(PrinterState(), INFO_IDLE, print_report("stop", "stoped"))
+    assert state.job is None
+    assert state.status is PrinterStatus.IDLE
+
+
+def test_info_project_overrides_print_report() -> None:
+    state = apply(
+        PrinterState(),
+        info_with(state="busy", project=PROJECT),
+        print_report("pause", "paused"),
+        info_with(state="busy", project=project_with(state="printing")),
+    )
+    assert state.status is PrinterStatus.PRINTING
+
+
+def test_print_report_integer_taskid_and_data_state() -> None:
+    state = apply(
+        PrinterState(),
+        info_with(project=PROJECT),
+        message("print", {"taskid": 614707220, "state": "paused"}),
+    )
+    assert state.job is not None
+    assert state.job.state == "paused"  # "done" is not a job state
+    assert state.job.progress == 60
+
+
+def test_print_report_without_task_changes_nothing() -> None:
+    state = apply(
+        PrinterState(),
+        info_with(project=PROJECT),
+        message("print", {"progress": 99}, action="pause", state="paused"),
+        message("print", None, action="pause", state="paused"),
+        message("print", {"taskid": "abc"}, action="pause", state="paused"),
+    )
+    assert state.job is not None
+    assert state.job.progress == 60
+    assert state.job.state == "printing"
+
+
+def test_print_report_other_task_replaces_job() -> None:
+    state = apply(
+        PrinterState(),
+        info_with(project=PROJECT),
+        message("print", {"taskid": "9", "progress": 1}, state="printing"),
+    )
+    assert state.job is not None
+    assert state.job.task_id == 9
+    assert state.job.total_layers is None
+
+
+@pytest.mark.parametrize("action", ["pause", "resume", "stop"])
+def test_failed_command_is_an_error_not_a_job_state(action: str) -> None:
+    # Q2 in docs/QUESTIONS.md: state failed with a non-OK code.
+    state = apply(
+        PrinterState(),
+        info_with(state="busy", project=PROJECT),
+        print_report(action, "failed") | {"code": 10500, "msg": "refused"},
+    )
+    assert state.last_error_code == 10500
+    assert state.last_error_message == "refused"
+    assert state.job is not None
+    assert state.job.state == "printing"  # "failed" is not applied to the job
+    assert state.status is PrinterStatus.PRINTING
+    # The next OK print report clears the error.
+    state = apply(state, print_report(action, "paused"))
+    assert state.last_error is None
 
 
 def test_error_codes() -> None:

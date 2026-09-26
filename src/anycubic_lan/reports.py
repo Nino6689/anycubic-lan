@@ -106,6 +106,19 @@ def _code(value: object) -> int | None:
     return None
 
 
+def _task_id(data: Mapping[str, Any]) -> int | None:
+    """``task_id`` (``info.project``) or ``taskid`` (``print`` reports, Q2).
+
+    ``taskid`` may be a string of digits, as in the job commands (§7.2).
+    """
+    if (task_id := _int(data.get("task_id"))) is not None:
+        return task_id
+    raw = data.get("taskid")
+    if isinstance(raw, str) and raw.strip().isdigit():
+        return int(raw.strip())
+    return _int(raw)
+
+
 def _merge[T](old: T, new: T) -> T:
     """Return ``old`` with every non-``None`` field of ``new`` applied."""
     changes = {
@@ -218,7 +231,7 @@ class Job:
     def from_data(cls, data: Mapping[str, Any]) -> Job:
         raw_status = data.get("print_status")
         return cls(
-            task_id=_int(data.get("task_id")),
+            task_id=_task_id(data),
             filename=_str(data.get("filename")),
             progress=_num(data.get("progress")),
             current_layer=_int(data.get("curr_layer")),
@@ -565,9 +578,31 @@ class ExternalFilamentBoxReport(Report):
 
 @dataclass(frozen=True, slots=True)
 class PrintReport(Report):
-    """``print`` report (PROTOCOL.md §6.9), also the answer to job commands."""
+    """``print`` report (PROTOCOL.md §6.9), also the answer to job commands.
+
+    Its ``data`` has the shape of ``info.project`` with the task id under
+    ``taskid``; its ``action``/``state`` pairs are listed in Q2 of
+    docs/QUESTIONS.md (e.g. ``pause``/``paused``, ``stop``/``stoped``).
+    """
 
     job: Job | None = None
+
+    @property
+    def command_failed(self) -> bool:
+        """The printer refused the command (``state: failed`` or a bad code)."""
+        return self.envelope.is_failed or self.envelope.is_error
+
+    @property
+    def job_state(self) -> str | None:
+        """The envelope ``state`` as a job state word, if it is one.
+
+        ``failed`` (a refused command) and the generic completion words are
+        not job states.
+        """
+        state = self.envelope.state
+        if state is None or state in COMPLETED_STATES or self.command_failed:
+            return None
+        return state
 
 
 @dataclass(frozen=True, slots=True)
@@ -762,9 +797,6 @@ def _parse_extfilbox(envelope: Envelope, data: Mapping[str, Any] | None) -> Repo
 
 
 def _parse_print(envelope: Envelope, data: Mapping[str, Any] | None) -> Report:
-    # Q2 in docs/QUESTIONS.md: the ``print`` payload is not documented. It is
-    # parsed as a job block when it is an object, but only ``info.project``
-    # updates the merged state's job.
     return PrintReport(envelope, job=Job.from_data(data) if data else None)
 
 
@@ -923,6 +955,8 @@ class PrinterState:
                 )
             case ExternalFilamentBoxReport(data=Mapping() as data):
                 return replace(state, external_filament_box=data)
+            case PrintReport():
+                return state._apply_print(report)
         return state
 
     def _apply_code(self, envelope: Envelope) -> PrinterState:
@@ -971,6 +1005,23 @@ class PrinterState:
         if report.last_project_reported:
             changes["last_job"] = report.last_project
         return replace(state, **changes)
+
+    def _apply_print(self, report: PrintReport) -> PrinterState:
+        """Update the job from a ``print`` report (Q2 in docs/QUESTIONS.md).
+
+        ``info.project`` stays authoritative: a ``print`` report only updates
+        the job when its data names a task, never clears it, and never brings
+        back a job that is already over. A refused command changes nothing
+        here; its code is recorded by :meth:`_apply_code`.
+        """
+        job = report.job
+        if report.command_failed or job is None or job.task_id is None:
+            return self
+        if (job_state := report.job_state) is not None:
+            job = replace(job, state=job_state)
+        if self.job is None and job.is_finished:
+            return self
+        return replace(self, job=_merge_job(self.job, job))
 
     def _apply_ace(self, report: MultiColorBoxReport) -> PrinterState:
         boxes = report.boxes or ()
