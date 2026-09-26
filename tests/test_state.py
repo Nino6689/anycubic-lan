@@ -192,12 +192,65 @@ def test_axis_without_coordinates_keeps_position() -> None:
     assert state.position == Position(x=47, y=276, z=3.8152532726237904)
 
 
-def test_ace_boxes_replace() -> None:
-    state = apply(PrinterState(), message("multiColorBox", {"boxes": [ACE_BOX]}))
-    assert len(state.ace_boxes) == 1
+def get_info(*boxes: Any) -> dict[str, Any]:
+    return message(
+        "multiColorBox",
+        {"multi_color_box": list(boxes)},
+        action="getInfo",
+        state="success",
+    )
+
+
+def test_ace_boxes_get_info_replaces() -> None:
+    second = {**ACE_BOX, "id": 1}
+    state = apply(PrinterState(), get_info(ACE_BOX, second))
+    assert [b.id for b in state.ace_boxes] == [0, 1]
     assert state.ace_boxes[0].loaded_slot == 0
     state = apply(state, message("multiColorBox", None))
-    assert len(state.ace_boxes) == 1  # nothing found: kept
+    assert len(state.ace_boxes) == 2  # nothing found: kept
+    state = apply(state, get_info(ACE_BOX))
+    assert [b.id for b in state.ace_boxes] == [0]
+
+
+def test_ace_boxes_partial_updates_merge_by_id() -> None:
+    state = apply(
+        PrinterState(),
+        get_info(ACE_BOX),
+        message(
+            "multiColorBox",
+            {"multi_color_box": [{"id": 0, "loaded_slot": 0}]},
+            action="autoUpdateInfo",
+        ),
+        message(
+            "multiColorBox",
+            {
+                "multi_color_box": [
+                    {
+                        "id": 0,
+                        "temp": 45,
+                        "drying_status": {"status": 1, "target_temp": 45},
+                    }
+                ]
+            },
+            action="setDry",
+            state="success",
+        ),
+        message(
+            "multiColorBox",
+            {"multi_color_box": [{"id": 1, "loaded_slot": -1}]},
+            action="autoUpdateInfo",
+        ),
+    )
+    first, second = state.ace_boxes
+    assert first.loaded_slot_raw == 0
+    assert first.temp == 45
+    assert first.drying is not None
+    assert first.drying.is_drying
+    assert first.slots is not None
+    assert first.slots[0].material == "PLA"  # slots kept from getInfo
+    assert first.model_id == 40002
+    assert second.id == 1
+    assert second.loaded_slot is None
 
 
 def test_ai_settings_and_peripherals_merge() -> None:
@@ -255,3 +308,20 @@ def test_state_is_immutable_and_apply_returns_new() -> None:
     after = apply(before, INFO_IDLE)
     assert before.firmware_version is None
     assert after is not before
+
+
+def test_stopped_job_is_not_printing() -> None:
+    stopped = project_with(state="stoped", print_status=1)
+    state = apply(PrinterState(), info_with(state="busy", project=stopped))
+    assert state.status is PrinterStatus.BUSY
+
+
+def test_code_zero_is_ok_and_clears() -> None:
+    state = apply(
+        PrinterState(),
+        message("print", None, code=0),
+        message("print", None, code=10801, msg="runout"),
+    )
+    assert state.last_error_code == 10801
+    state = apply(state, message("print", None, code=0))
+    assert state.last_error is None

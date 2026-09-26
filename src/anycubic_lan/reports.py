@@ -37,8 +37,15 @@ _EMPTY_FEATURES: Mapping[str, bool] = MappingProxyType({})
 _EMPTY_ERRORS: Mapping[str, ReportCode] = MappingProxyType({})
 _KNOWN_KINDS = frozenset(kind.value for kind in ReportKind)
 
-#: ``code`` meaning "processed / nothing wrong" (PROTOCOL.md §5).
-CODE_OK = 200
+#: ``code`` values meaning "processed / nothing wrong" (PROTOCOL.md §5;
+#: QUESTIONS.md Q4: both 0 and 200 occur).
+OK_CODES = frozenset({0, 200})
+
+#: Job ``state`` words that mean the job is over (QUESTIONS.md Q3).
+_JOB_OVER_STATES = frozenset(
+    {"finished", "stopped", "stoped", "failed", "canceled", "cancelled"}
+)
+_JOB_PAUSED_STATES = frozenset({"pausing", "paused"})
 
 
 # --------------------------------------------------------------------------
@@ -90,14 +97,22 @@ def _int_tuple(value: object) -> tuple[int, ...] | None:
 
 
 def _code(value: object) -> int | None:
-    parsed = _int(value)
-    if (
-        parsed is None
-        and isinstance(value, str)
-        and value.strip().lstrip("-").isdigit()
-    ):
-        parsed = int(value.strip())
-    return parsed
+    # QUESTIONS.md Q4: a non-integer or boolean ``code`` is treated as absent.
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def _task_id(data: Mapping[str, Any]) -> int | None:
+    # ``info.project`` says ``task_id``; the ``print`` report says ``taskid``
+    # (QUESTIONS.md Q2). Commands send it as a string, so accept digits too.
+    for key in ("task_id", "taskid"):
+        value = data.get(key)
+        if (parsed := _int(value)) is not None:
+            return parsed
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+    return None
 
 
 def _merge[T](old: T, new: T) -> T:
@@ -131,8 +146,13 @@ class Envelope:
 
     @property
     def is_error(self) -> bool:
-        """``True`` when the printer reported a code other than 200."""
-        return self.code is not None and self.code != CODE_OK
+        """``True`` when the printer reported a code other than 0 or 200."""
+        return self.code is not None and self.code not in OK_CODES
+
+    @property
+    def is_completed(self) -> bool:
+        """``state`` is ``done`` or ``success`` (equivalent; QUESTIONS.md Q1)."""
+        return self.state in ("done", "success")
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,7 +222,7 @@ class Job:
     def from_data(cls, data: Mapping[str, Any]) -> Job:
         raw_status = data.get("print_status")
         return cls(
-            task_id=_int(data.get("task_id")),
+            task_id=_task_id(data),
             filename=_str(data.get("filename")),
             progress=_num(data.get("progress")),
             current_layer=_int(data.get("curr_layer")),
@@ -228,17 +248,15 @@ class Job:
 
     @property
     def is_paused(self) -> bool:
-        return bool(self.pause) or self.state == "paused"
+        return bool(self.pause) or self.state in _JOB_PAUSED_STATES
 
     @property
     def is_finished(self) -> bool:
-        """The job reports a terminal status (complete or cancelled)."""
-        # Q3 in docs/QUESTIONS.md: the full list of job ``state`` words is not
-        # documented; only ``finished`` is treated as terminal text.
-        return self.print_status in (
-            PrintStatus.COMPLETE,
-            PrintStatus.CANCELLED,
-        ) or self.state in ("finished",)
+        """The job is over: ``print_status`` 2 or 3, or a terminal ``state``."""
+        return (
+            self.print_status in (PrintStatus.COMPLETE, PrintStatus.CANCELLED)
+            or self.state in _JOB_OVER_STATES
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -329,7 +347,8 @@ class AceBox:
     loaded_slot_raw: int | None = None
     temp: Number | None = None
     drying: AceDrying | None = None
-    slots: tuple[AceSlot, ...] = ()
+    slots: tuple[AceSlot, ...] | None = None
+    """``None`` when the report did not carry slots."""
 
     @classmethod
     def from_data(cls, data: Mapping[str, Any]) -> AceBox:
@@ -341,7 +360,7 @@ class AceBox:
                 duration=_num(raw_drying.get("duration")),
                 remain_time=_num(raw_drying.get("remain_time")),
             )
-        slots: tuple[AceSlot, ...] = ()
+        slots: tuple[AceSlot, ...] | None = None
         if isinstance(raw_slots := data.get("slots"), list):
             slots = tuple(
                 AceSlot.from_data(slot)
@@ -368,7 +387,7 @@ class AceBox:
         """
         if self.loaded_slot_raw is not None and self.loaded_slot_raw >= 0:
             return self.loaded_slot_raw
-        for slot in self.slots:
+        for slot in self.slots or ():
             if slot.is_loaded:
                 return slot.index
         return None
@@ -639,25 +658,12 @@ def _parse_axis(envelope: Envelope, data: Mapping[str, Any] | None) -> Report:
     )
 
 
-def _find_boxes(raw: object) -> list[Any] | None:
-    # Q1 in docs/QUESTIONS.md: the key holding the box list inside ``data`` is
-    # not documented. Accept ``data`` being the list itself, or the first
-    # value inside ``data`` that is a list of objects.
-    if isinstance(raw, list):
-        return raw
-    if (data := _map(raw)) is None:
-        return None
-    for value in data.values():
-        if isinstance(value, list) and all(isinstance(v, Mapping) for v in value):
-            return value
-    return None
-
-
 def _parse_multi_color_box(
     envelope: Envelope, data: Mapping[str, Any] | None
 ) -> Report:
-    raw = _find_boxes(envelope.data)
-    if raw is None:
+    # The boxes are the list under ``data.multi_color_box`` (QUESTIONS.md Q1).
+    raw = (data or {}).get("multi_color_box")
+    if not isinstance(raw, list):
         return MultiColorBoxReport(envelope)
     boxes = tuple(AceBox.from_data(box) for b in raw if (box := _map(b)) is not None)
     return MultiColorBoxReport(envelope, boxes=boxes)
@@ -694,9 +700,9 @@ def _parse_extfilbox(envelope: Envelope, data: Mapping[str, Any] | None) -> Repo
 
 
 def _parse_print(envelope: Envelope, data: Mapping[str, Any] | None) -> Report:
-    # Q2 in docs/QUESTIONS.md: the ``print`` payload is not documented. It is
-    # parsed as a job block when it is an object, but only ``info.project``
-    # updates the merged state's job.
+    # QUESTIONS.md Q2: ``data`` carries the job fields. ``info.project`` stays
+    # the authoritative job (``print`` is silent when idle), so a ``print``
+    # report does not change the merged state's job.
     return PrintReport(envelope, job=Job.from_data(data) if data else None)
 
 
@@ -788,8 +794,8 @@ class PrinterState:
     @property
     def last_error(self) -> ReportCode | None:
         """The most recent non-200 code that has not been cleared since."""
-        # Q4 in docs/QUESTIONS.md: when a printer error "clears" is not
-        # documented; a later code 200 for the same report kind clears it.
+        # QUESTIONS.md Q4: the printer sends no explicit "cleared" message; the
+        # next OK code (0 or 200) for the same report kind clears it.
         if not self.errors:
             return None
         return list(self.errors.values())[-1]
@@ -833,7 +839,9 @@ class PrinterState:
             case AxisReport(position=Position() as position):
                 return replace(state, position=position)
             case MultiColorBoxReport(boxes=tuple() as boxes):
-                return replace(state, ace_boxes=boxes)
+                if report.envelope.action == "getInfo":
+                    return replace(state, ace_boxes=boxes)
+                return replace(state, ace_boxes=_merge_boxes(state.ace_boxes, boxes))
             case AiSettingsReport():
                 return replace(
                     state,
@@ -857,7 +865,7 @@ class PrinterState:
             return self
         errors = dict(self.errors)
         errors.pop(envelope.kind, None)
-        if envelope.code != CODE_OK:
+        if envelope.code not in OK_CODES:
             errors[envelope.kind] = ReportCode(
                 envelope.kind, envelope.code, envelope.msg
             )
@@ -930,3 +938,22 @@ def _merge_job(previous: Job | None, new: Job | None) -> Job | None:
     ):
         return new
     return _merge(previous, new)
+
+
+def _merge_boxes(
+    known: tuple[AceBox, ...], reported: tuple[AceBox, ...]
+) -> tuple[AceBox, ...]:
+    """Merge a partial box list (every action but ``getInfo``) by box id.
+
+    ``autoUpdateInfo``, ``setDry``, ``feedFilament`` and others carry only
+    some fields of some boxes (QUESTIONS.md Q1); the rest is kept.
+    """
+    boxes = list(known)
+    for box in reported:
+        for i, old in enumerate(boxes):
+            if box.id is not None and old.id == box.id:
+                boxes[i] = _merge(old, box)
+                break
+        else:
+            boxes.append(box)
+    return tuple(boxes)

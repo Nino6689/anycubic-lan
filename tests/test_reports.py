@@ -69,10 +69,28 @@ def test_envelope_fields() -> None:
     assert not env.is_error
 
 
-def test_envelope_accepts_str_payload_and_string_code() -> None:
-    report = _parse(json.dumps({**ENVELOPE, "code": "10801"}))
+def test_envelope_accepts_str_payload() -> None:
+    report = _parse(json.dumps({**ENVELOPE, "code": 10801}))
     assert report.envelope.code == 10801
     assert report.envelope.is_error
+
+
+@pytest.mark.parametrize("code", ["10801", "200", True, 200.0, None])
+def test_non_integer_code_is_absent(code: Any) -> None:
+    assert _parse({**ENVELOPE, "code": code}).envelope.code is None
+
+
+@pytest.mark.parametrize("code", [0, 200])
+def test_ok_codes(code: int) -> None:
+    assert not _parse({**ENVELOPE, "code": code}).envelope.is_error
+
+
+@pytest.mark.parametrize(
+    ("state", "completed"),
+    [("done", True), ("success", True), ("failed", False), (None, False)],
+)
+def test_completed_states(state: str | None, completed: bool) -> None:
+    assert _parse({**ENVELOPE, "state": state}).envelope.is_completed is completed
 
 
 def test_envelope_bad_values_become_none() -> None:
@@ -454,16 +472,26 @@ def test_ace_drying_and_bad_fields() -> None:
     assert box.slots[0].index == 1
 
 
-def test_multi_color_box_data_is_list() -> None:
-    report = _parse({"type": "multiColorBox", "data": [ACE_BOX, ACE_BOX]})
-    assert report.boxes is not None
-    assert len(report.boxes) == 2
+def test_multi_color_box_partial_update() -> None:
+    report = _parse(
+        message(
+            "multiColorBox",
+            {"multi_color_box": [{"id": 0, "loaded_slot": 2}]},
+            action="autoUpdateInfo",
+        )
+    )
+    (box,) = report.boxes
+    assert box.loaded_slot == 2
+    assert box.slots is None
+    assert box.drying is None
 
 
 def test_multi_color_box_without_boxes() -> None:
-    assert _parse(message("multiColorBox", {"x": 1})).boxes is None
+    assert _parse(message("multiColorBox", {"boxes": [ACE_BOX]})).boxes is None
+    assert _parse(message("multiColorBox", {"multi_color_box": "x"})).boxes is None
     assert _parse(message("multiColorBox", None)).boxes is None
-    empty = _parse(message("multiColorBox", {"boxes": []}))
+    assert _parse({"type": "multiColorBox", "data": [ACE_BOX]}).boxes is None
+    empty = _parse(message("multiColorBox", {"multi_color_box": [1, None]}))
     assert empty.boxes == ()
 
 
@@ -524,3 +552,34 @@ def test_speed_mode_enum() -> None:
     assert SpeedMode.from_raw(3) is SpeedMode.SPORT
     assert SpeedMode.from_raw(9) is None
     assert SpeedMode.from_raw(True) is None
+
+
+@pytest.mark.parametrize(
+    "state", ["finished", "stopped", "stoped", "failed", "canceled", "cancelled"]
+)
+def test_job_over_states(state: str) -> None:
+    job = Job.from_data(project_with(state=state, print_status=1))
+    assert job.is_finished
+
+
+@pytest.mark.parametrize("state", ["printing", "auto_leveling", "resuming", "resumed"])
+def test_job_running_states(state: str) -> None:
+    job = Job.from_data(project_with(state=state))
+    assert not job.is_finished
+    assert not job.is_paused
+
+
+def test_job_pausing_is_paused() -> None:
+    assert Job.from_data(project_with(state="pausing")).is_paused
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"), [(614707220, 614707220), ("614707220", 614707220), ("x", None)]
+)
+def test_print_report_taskid(raw: Any, expected: int | None) -> None:
+    data = {k: v for k, v in PROJECT.items() if k != "task_id"}
+    report = _parse(
+        message("print", {**data, "taskid": raw}, action="pause", state="paused")
+    )
+    assert report.job is not None
+    assert report.job.task_id == expected

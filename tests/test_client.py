@@ -557,8 +557,9 @@ async def test_light_commands() -> None:
         topic=f"{REPORT}/light/report",
     )
     await settle()
-    assert await sent(client.light_off()) == {"type": 2, "status": 0, "brightness": 40}
-    assert await sent(client.light_on()) == {"type": 2, "status": 1, "brightness": 40}
+    # QUESTIONS.md Q9: no reliance on a remembered brightness.
+    assert await sent(client.light_off()) == {"type": 2, "status": 0, "brightness": 0}
+    assert await sent(client.light_on()) == {"type": 2, "status": 1, "brightness": 100}
     assert await sent(client.light_on(75)) == {"type": 2, "status": 1, "brightness": 75}
     assert await sent(client.set_light_brightness(20)) == {
         "type": 2,

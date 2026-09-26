@@ -208,8 +208,8 @@ class AnycubicLanClient:
             protocol=mqtt.MQTTv311,
         )
         client.username_pw_set(credentials.username, credentials.password)
-        # Q7 in docs/QUESTIONS.md: a broker URL with the plain "mqtt://"
-        # scheme is still reached over TLS, as PROTOCOL.md §4 requires.
+        # QUESTIONS.md Q7: the broker is always reached over TLS, whatever the
+        # scheme of its URL (only mqtts:// has been observed).
         client.tls_set_context(_tls_context())
         client.tls_insecure_set(True)
         client.connect_timeout = self._connect_timeout
@@ -369,8 +369,7 @@ class AnycubicLanClient:
         client = self._mqtt
         if client is None or not self._connected:
             raise NotConnectedError("Not connected to the printer")
-        # Q8 in docs/QUESTIONS.md: the QoS the printer expects is not
-        # documented; QoS 0 is used.
+        # QUESTIONS.md Q8: QoS 0 for publishing and subscribing.
         info = client.publish(
             self.command_topic(kind), json.dumps(payload, separators=(",", ":"))
         )
@@ -437,27 +436,13 @@ class AnycubicLanClient:
     ) -> str:
         """Switch a light and optionally set its brightness (0-100).
 
-        Without ``brightness`` the last known brightness is kept; when none
-        is known, 0 is used to switch off, and 100 to switch on (also when
-        the known brightness is 0).
+        Without ``brightness``, switching on uses 100 and switching off
+        uses 0 (QUESTIONS.md Q9).
         """
         if brightness is None:
-            # Q9 in docs/QUESTIONS.md: which brightness an "off" command
-            # should carry is not documented. "Off" resends the last known
-            # brightness (including 0) so the setting is not changed; "on"
-            # resends it only when non-zero, since on at 0 would stay dark.
-            known = next(
-                (
-                    light.brightness
-                    for light in self._state.lights
-                    if light.type == light_type and light.brightness is not None
-                ),
-                None,
-            )
-            if on:
-                brightness = known if known else 100
-            else:
-                brightness = known if known is not None else 0
+            # QUESTIONS.md Q9: "off" carries brightness 0 and "on" carries 100
+            # unless asked otherwise; the printer does not remember a value.
+            brightness = 100 if on else 0
         return await self.send_command(
             ReportKind.LIGHT, "control", light_command_data(on, brightness, light_type)
         )
