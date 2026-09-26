@@ -208,8 +208,8 @@ class AnycubicLanClient:
             protocol=mqtt.MQTTv311,
         )
         client.username_pw_set(credentials.username, credentials.password)
-        # Q7 in docs/QUESTIONS.md: a broker URL with the plain "mqtt://"
-        # scheme is still reached over TLS, as PROTOCOL.md §4 requires.
+        # TLS is always used, whatever the broker URL's scheme: only
+        # "mqtts://" on port 9883 has been observed (Q7 in docs/QUESTIONS.md).
         client.tls_set_context(_tls_context())
         client.tls_insecure_set(True)
         client.connect_timeout = self._connect_timeout
@@ -369,8 +369,8 @@ class AnycubicLanClient:
         client = self._mqtt
         if client is None or not self._connected:
             raise NotConnectedError("Not connected to the printer")
-        # Q8 in docs/QUESTIONS.md: the QoS the printer expects is not
-        # documented; QoS 0 is used.
+        # QoS 0 for publishing and subscribing, as used against real hardware
+        # (Q8 in docs/QUESTIONS.md).
         info = client.publish(
             self.command_topic(kind), json.dumps(payload, separators=(",", ":"))
         )

@@ -177,8 +177,8 @@ def parse_discovery(document: object) -> DiscoveryInfo:
     ctrl_info_url = document.get("ctrlInfoUrl")
     model_id = document.get("modelId")
     if isinstance(model_id, str) and model_id.isdigit():
-        # Q5 in docs/QUESTIONS.md: modelId was an integer on both tested
-        # printers; a numeric string is accepted as the same value.
+        # modelId is a JSON integer on both tested printers; a string of the
+        # same digits is accepted too (Q5 in docs/QUESTIONS.md).
         model_id = int(model_id)
     if (
         not isinstance(token, str)
@@ -192,8 +192,8 @@ def parse_discovery(document: object) -> DiscoveryInfo:
             "Discovery document lacks a usable token, ctrlInfoUrl or modelId"
         )
     if ctrl_type != "lan":
-        # Q6 in docs/QUESTIONS.md: only "lan" and "cloud" are documented. Any
-        # other (or missing) ctrlType is refused rather than guessed at.
+        # Only "lan" and "cloud" have been observed (Q6 in docs/QUESTIONS.md).
+        # Any other (or missing) ctrlType is refused rather than guessed at.
         raise UnsupportedPrinterError(f"Unexpected ctrlType {ctrl_type!r}")
 
     def optional(key: str) -> str | None:
