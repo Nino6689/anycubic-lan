@@ -557,8 +557,15 @@ async def test_light_commands() -> None:
         topic=f"{REPORT}/light/report",
     )
     await settle()
-    assert await sent(client.light_off()) == {"type": 2, "status": 0, "brightness": 40}
-    assert await sent(client.light_on()) == {"type": 2, "status": 1, "brightness": 40}
+    # Q9 in docs/QUESTIONS.md: off always sends brightness 0, and on without a
+    # brightness sends 100, whatever brightness was last reported.
+    assert await sent(client.light_off()) == {"type": 2, "status": 0, "brightness": 0}
+    assert await sent(client.light_on()) == {"type": 2, "status": 1, "brightness": 100}
+    assert await sent(client.set_light(False, 60)) == {
+        "type": 2,
+        "status": 0,
+        "brightness": 0,
+    }
     assert await sent(client.light_on(75)) == {"type": 2, "status": 1, "brightness": 75}
     assert await sent(client.set_light_brightness(20)) == {
         "type": 2,

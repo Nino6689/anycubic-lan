@@ -437,22 +437,14 @@ class AnycubicLanClient:
     ) -> str:
         """Switch a light and optionally set its brightness (0-100).
 
-        Without ``brightness`` the last known brightness is kept; when none
-        is known, 100 is used to switch on and 0 to switch off.
+        Switching off always sends brightness 0. Switching on sends
+        ``brightness``, or 100 when none is given: the printer is not relied
+        on to remember a previous brightness (Q9 in docs/QUESTIONS.md).
         """
-        if brightness is None:
-            # Q9 in docs/QUESTIONS.md: which brightness an "off" command
-            # should carry is not documented; the last known one is resent so
-            # the setting is not changed.
-            known = next(
-                (
-                    light.brightness
-                    for light in self._state.lights
-                    if light.type == light_type and light.brightness
-                ),
-                None,
-            )
-            brightness = known if known is not None else (100 if on else 0)
+        if not on:
+            brightness = 0
+        elif brightness is None:
+            brightness = 100
         return await self.send_command(
             ReportKind.LIGHT, "control", light_command_data(on, brightness, light_type)
         )
