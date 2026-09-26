@@ -232,6 +232,7 @@ def test_parse_discovery_numeric_string_model_id() -> None:
             UnsupportedPrinterError,
         ),
         ({**DISCOVERY, "token": "short"}, UnsupportedPrinterError),
+        ({**DISCOVERY, "token": "é" * 32}, UnsupportedPrinterError),
         ({**DISCOVERY, "modelId": True}, UnsupportedPrinterError),
         ({**DISCOVERY, "modelId": "S1"}, UnsupportedPrinterError),
         ({**DISCOVERY, "ctrlInfoUrl": ""}, UnsupportedPrinterError),

@@ -101,6 +101,12 @@ def test_status_from_job_state_words(job_state: str, status: PrinterStatus) -> N
     assert state.status is status
 
 
+def test_stopped_job_is_not_printing() -> None:
+    stopped = project_with(state="stoped", print_status=1)
+    state = apply(PrinterState(), info_with(state="busy", project=stopped))
+    assert state.status is PrinterStatus.BUSY
+
+
 def test_print_status_zero_keeps_prior_status() -> None:
     state = apply(
         PrinterState(),

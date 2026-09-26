@@ -582,6 +582,13 @@ async def test_light_commands() -> None:
         "status": 1,
         "brightness": 100,
     }
+    fake.fire_message(
+        message("light", {"type": 2, "status": 0, "brightness": 0}),
+        topic=f"{REPORT}/light/report",
+    )
+    await settle()
+    assert await sent(client.light_off()) == {"type": 2, "status": 0, "brightness": 0}
+    assert await sent(client.light_on()) == {"type": 2, "status": 1, "brightness": 100}
     with pytest.raises(ValueError, match="brightness"):
         await client.set_light_brightness(150)
     await client.disconnect()

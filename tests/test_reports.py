@@ -83,6 +83,17 @@ def test_envelope_ok_codes(code: int) -> None:
     assert not report.envelope.is_error
 
 
+@pytest.mark.parametrize(
+    ("state", "completed"),
+    [("done", True), ("success", True), ("failed", False), (None, False)],
+)
+def test_completed_states(state: str | None, completed: bool) -> None:
+    # Q1 in docs/QUESTIONS.md: success and done are equivalent for every kind.
+    envelope = _parse({**ENVELOPE, "state": state}).envelope
+    assert envelope.is_completed is completed
+    assert envelope.is_failed is (state == "failed")
+
+
 @pytest.mark.parametrize("code", ["10801", "200", 200.0, 1.5, True, False, None, [1]])
 def test_envelope_non_integer_code_is_absent(code: Any) -> None:
     # Q4 in docs/QUESTIONS.md: a non-integer or boolean code is absent.
@@ -116,6 +127,8 @@ def test_ignored_messages(payload: Any) -> None:
 def test_single_key_on_response_topic_ignored() -> None:
     topic = "anycubic/anycubicCloud/v1/printer/public/20025/DEVICE1234/response"
     assert parse_message({"action": "x"}, topic) is None
+    assert parse_message({"type": "info"}, topic) is None
+    assert parse_message({"type": "info"}, REPORT_TOPIC) is not None
 
 
 def test_type_absent_uses_topic() -> None:

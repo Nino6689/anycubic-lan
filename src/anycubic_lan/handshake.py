@@ -183,6 +183,7 @@ def parse_discovery(document: object) -> DiscoveryInfo:
     if (
         not isinstance(token, str)
         or len(token) != _TOKEN_LENGTH
+        or not token.isascii()
         or not isinstance(ctrl_info_url, str)
         or not ctrl_info_url
         or not isinstance(model_id, int)
