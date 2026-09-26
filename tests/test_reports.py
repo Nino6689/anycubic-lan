@@ -287,6 +287,52 @@ def test_job_float_values_and_paused() -> None:
 
 
 @pytest.mark.parametrize(
+    "state",
+    ["finished", "stopped", "stoped", "failed", "canceled", "cancelled"],
+)
+def test_job_over_states(state: str) -> None:
+    # Q3 in docs/QUESTIONS.md: the job-over state words.
+    job = Job.from_data(project_with(state=state, print_status=0))
+    assert job.is_finished
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        "downloading",
+        "checking",
+        "preheating",
+        "auto_leveling",
+        "printing",
+        "pausing",
+        "paused",
+        "resuming",
+        "resumed",
+        "stopping",
+    ],
+)
+def test_job_not_over_states(state: str) -> None:
+    job = Job.from_data(project_with(state=state, print_status=0))
+    assert not job.is_finished
+
+
+@pytest.mark.parametrize("print_status", [2, 3])
+def test_job_over_by_print_status(print_status: int) -> None:
+    job = Job.from_data(project_with(state="printing", print_status=print_status))
+    assert job.is_finished
+
+
+def test_job_pause_states() -> None:
+    assert Job.from_data(project_with(state="pausing")).is_paused
+    assert Job.from_data(project_with(state="paused")).is_paused
+    # resuming/resumed win over a pause flag that has not caught up yet.
+    assert not Job.from_data(project_with(state="resuming", pause=1)).is_paused
+    assert not Job.from_data(project_with(state="resumed", pause=1)).is_paused
+    assert Job.from_data(project_with(state="stopping")).is_stopping
+    assert not Job.from_data(PROJECT).is_stopping
+
+
+@pytest.mark.parametrize(
     ("filename", "name"),
     [
         ("plain.gcode", "plain"),

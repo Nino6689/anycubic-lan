@@ -24,6 +24,23 @@ DEFAULT_LIGHT_TYPE = 2
 #: Slot ``status`` meaning "this slot feeds the printer" (PROTOCOL.md §6.7).
 SLOT_STATUS_LOADED = 5
 
+#: Job ``state`` words meaning the job is over (Q3 in docs/QUESTIONS.md).
+#: ``stoped`` is the firmware's own spelling; both ``canceled`` and
+#: ``cancelled`` occur.
+JOB_OVER_STATES = frozenset(
+    {"finished", "stopped", "stoped", "failed", "canceled", "cancelled"}
+)
+
+#: Job ``state`` words meaning the job is paused or pausing (Q3).
+JOB_PAUSED_STATES = frozenset({"pausing", "paused"})
+
+#: Job ``state`` words meaning the job is leaving a pause (Q3). They win over
+#: a ``pause`` flag that has not caught up yet.
+JOB_RESUMING_STATES = frozenset({"resuming", "resumed"})
+
+#: Job ``state`` words meaning a stop is under way but not finished (Q3).
+JOB_STOPPING_STATES = frozenset({"stopping"})
+
 
 def printer_model_name(model_id: int) -> str:
     """Return the model name for ``model_id``.
@@ -81,7 +98,12 @@ class SpeedMode(IntEnum):
 
 
 class PrinterStatus(StrEnum):
-    """Overall printer status derived from ``info.state`` and the current job."""
+    """Overall printer status derived from ``info.state`` and the current job.
+
+    A job that is ``pausing`` or ``paused`` reads as :attr:`PAUSED`;
+    ``resuming`` and ``resumed`` read as :attr:`PRINTING`; ``stopping`` reads
+    as :attr:`BUSY` until the job is over (Q3 in docs/QUESTIONS.md).
+    """
 
     IDLE = "idle"
     PRINTING = "printing"

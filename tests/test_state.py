@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from anycubic_lan.models import PrinterStatus, PrintStatus, SpeedMode
 from anycubic_lan.reports import Position, PrinterState, parse_message
 
@@ -72,6 +74,31 @@ def test_finished_job_falls_back_to_printer_state() -> None:
     state = apply(PrinterState(), info_with(state="free", project=done))
     assert state.status is PrinterStatus.IDLE
     assert state.job_status is PrintStatus.COMPLETE
+
+
+@pytest.mark.parametrize(
+    ("job_state", "status"),
+    [
+        ("downloading", PrinterStatus.PRINTING),
+        ("preheating", PrinterStatus.PRINTING),
+        ("pausing", PrinterStatus.PAUSED),
+        ("paused", PrinterStatus.PAUSED),
+        ("resuming", PrinterStatus.PRINTING),
+        ("resumed", PrinterStatus.PRINTING),
+        ("stopping", PrinterStatus.BUSY),
+        ("stopped", PrinterStatus.IDLE),
+        ("stoped", PrinterStatus.IDLE),
+        ("failed", PrinterStatus.IDLE),
+        ("canceled", PrinterStatus.IDLE),
+        ("cancelled", PrinterStatus.IDLE),
+    ],
+)
+def test_status_from_job_state_words(job_state: str, status: PrinterStatus) -> None:
+    # Q3 in docs/QUESTIONS.md. print_status 0 is "keep", so only the state
+    # word decides; info.state is "free" so an over job falls back to idle.
+    project = project_with(state=job_state, print_status=0, pause=0)
+    state = apply(PrinterState(), info_with(state="free", project=project))
+    assert state.status is status
 
 
 def test_print_status_zero_keeps_prior_status() -> None:

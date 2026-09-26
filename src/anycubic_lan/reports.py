@@ -22,6 +22,10 @@ from typing import Any, cast
 
 from .models import (
     DEFAULT_LIGHT_TYPE,
+    JOB_OVER_STATES,
+    JOB_PAUSED_STATES,
+    JOB_RESUMING_STATES,
+    JOB_STOPPING_STATES,
     SLOT_STATUS_LOADED,
     PrinterStatus,
     PrintStatus,
@@ -227,17 +231,26 @@ class Job:
 
     @property
     def is_paused(self) -> bool:
-        return bool(self.pause) or self.state == "paused"
+        """Paused or pausing; ``resuming``/``resumed`` override the flag."""
+        if self.state in JOB_RESUMING_STATES:
+            return False
+        return bool(self.pause) or self.state in JOB_PAUSED_STATES
+
+    @property
+    def is_stopping(self) -> bool:
+        """A stop has been accepted but the job is not over yet."""
+        return self.state in JOB_STOPPING_STATES
 
     @property
     def is_finished(self) -> bool:
-        """The job reports a terminal status (complete or cancelled)."""
-        # Q3 in docs/QUESTIONS.md: the full list of job ``state`` words is not
-        # documented; only ``finished`` is treated as terminal text.
-        return self.print_status in (
-            PrintStatus.COMPLETE,
-            PrintStatus.CANCELLED,
-        ) or self.state in ("finished",)
+        """The job is over: ``print_status`` 2 or 3, or a terminal ``state``.
+
+        Terminal states are listed in Q3 of docs/QUESTIONS.md.
+        """
+        return (
+            self.print_status in (PrintStatus.COMPLETE, PrintStatus.CANCELLED)
+            or self.state in JOB_OVER_STATES
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -769,6 +782,8 @@ class PrinterState:
         """Overall status: idle, printing, paused, busy or unknown."""
         job = self.job
         if job is not None and not job.is_finished:
+            if job.is_stopping:
+                return PrinterStatus.BUSY
             return PrinterStatus.PAUSED if job.is_paused else PrinterStatus.PRINTING
         if self.printer_state == "free":
             return PrinterStatus.IDLE
