@@ -100,6 +100,8 @@ def test_ignored_messages(payload: Any) -> None:
 def test_single_key_on_response_topic_ignored() -> None:
     topic = "anycubic/anycubicCloud/v1/printer/public/20025/DEVICE1234/response"
     assert parse_message({"action": "x"}, topic) is None
+    assert parse_message({"type": "info"}, topic) is None
+    assert parse_message({"type": "info"}, REPORT_TOPIC) is not None
 
 
 def test_type_absent_uses_topic() -> None:

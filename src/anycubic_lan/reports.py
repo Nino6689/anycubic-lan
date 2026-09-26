@@ -547,11 +547,10 @@ def parse_message(
     raw_type = message.get("type")
     if raw_type == "":
         return None  # Kobra X emits many of these; they carry nothing.
-    if "type" not in message:
-        if set(message) <= {"msgid"}:
-            return None  # bare acknowledgement
-        if topic is not None and "response" in topic.split("/") and len(message) <= 1:
-            return None
+    if topic is not None and "response" in topic.split("/") and len(message) <= 1:
+        return None
+    if "type" not in message and set(message) <= {"msgid"}:
+        return None  # bare acknowledgement
     kind = _str(raw_type) or kind_from_topic(topic)
     if not kind:
         return None

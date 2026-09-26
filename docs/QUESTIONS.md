@@ -81,4 +81,4 @@ PROTOCOL.md §7.2 gives `{"type": 2, "status": 0|1, "brightness": 0–100}`.
 When switching off, which `brightness` should be sent, and does the printer
 remember it for the next "on"? **Interim choice**: resend the last known
 brightness of that light (0 if none is known); switching on without a
-brightness resends the last known one, or 100.
+brightness resends the last known one when it is non-zero, else 100.
