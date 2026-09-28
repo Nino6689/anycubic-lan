@@ -66,11 +66,14 @@ Fields:
 | `ctrlType` | `"lan"` when LAN Mode is on. **`"cloud"` when LAN Mode is off** — the printer answers but will not hand out credentials. Treat as "not in LAN Mode". |
 | `token` | 32 characters. Used for signing and decryption (§3). Changes over time. |
 | `ctrlInfoUrl` | Absolute URL of the control endpoint for step 2. Use it as given. |
-| `modelId` | Integer model id (see §9). |
+| `modelId` | Model id (see §9). **Sent as a string of digits** (`"20025"`) by a Kobra S1 on firmware 2.7.2.7, observed live 2026-09-28; accept an integer too. |
 | `cn` | Serial number. May be absent. |
 | `usn` | A URN containing the printer's MAC, e.g. `uuid:fdm:A4-E8-8D-80-54-C8`. The MAC is the six hex pairs; normalise as needed. May be absent. |
 | `modelName` | Human-readable model. May be absent. |
 | `deviceType` | `"fdm"` on the tested printers. |
+| `ip`, `deviceName`, `zone`, `env` | Also present on a Kobra S1 (firmware 2.7.2.7, observed 2026-09-28): the printer's address, display name, `"global"`, `"prod"`. |
+| `rtspUrl` | The camera stream URL (HTTP-FLV, port 18088), same as `info.urls.rtspUrl`. |
+| `fileUploadurl` | **Secret.** A signed G-code upload URL, `http://<host>:18910/gcode_upload?s=<token>`. The `s` token authorises uploading files to the printer, so treat the whole URL like a password: redact it in logs and diagnostics. Note the spelling: `fileUploadurl`, lower-case `url`. The same URL also arrives as `info.urls.fileUploadurl` (§6.1). |
 
 **Required** for the handshake: `token`, `ctrlInfoUrl`, `modelId`. Older models
 (Kobra 2 and earlier) answer on this port with a different, unsigned document
@@ -278,7 +281,7 @@ Captured, Kobra S1 idle:
 | `version` | Firmware version string |
 | `state` | `free` = idle/available; `busy` = printing or otherwise occupied. Other values may appear; keep the raw string. |
 | `urls.rtspUrl` | Despite the name, an **HTTP-FLV** camera stream URL on port 18088 |
-| `urls.fileUploadurl` | Signed upload URL (not needed for monitoring) |
+| `urls.fileUploadurl` | **Secret**: the signed upload URL, same as the discovery document's `fileUploadurl` (§2). Not needed for monitoring; redact it. |
 | `temp.*` | Integers, °C. `curr_*` actual, `target_*` setpoint. Some models add `curr_chamber_temp` / `target_chamber_temp`; the Kobra S1 reports `0` for chamber (it has none) — treat "absent" and "always 0 on a chamberless model" as no chamber. |
 | `print_speed_mode` | Integer speed preset (1 silent, 2 standard, 3 sport observed on S1; treat unknown values as raw). |
 | `fan_speed_pct`, `aux_fan_speed_pct` | 0–100 |
@@ -389,8 +392,9 @@ light is **`type: 2`**.
 
 ### 6.7 `multiColorBox` — ACE filament hub
 
-Queried with action **`getInfo`** (it stays silent for `query`). `data`
-contains a list of boxes; each box:
+Queried with action **`getInfo`** (it stays silent for `query`); the reply's
+`state` is **`success`**, not `done`. The boxes are the list under
+**`data.multi_color_box`** (see `QUESTIONS.md` Q1 for every action); each box:
 
 ```json
 {
@@ -419,8 +423,13 @@ Fields that read `0` on this hardware and carry no information: box
 
 ### 6.8 `aiSettings`
 
+The settings are **nested under `data.ai_settings`**, not directly in `data`.
+Captured live, Kobra S1, 2026-09-28:
+
 ```json
-{"status": 3, "type": 2, "count": 60, "notice_type": [0, 1], "sensitivity_level": [1, 1]}
+{"type": "aiSettings", "action": "query", "state": "done", "code": 200, "msg": "done",
+ "data": {"ai_settings": {"status": 0, "type": 2, "count": 60,
+                          "notice_type": [0, 1], "sensitivity_level": [1, 1]}}}
 ```
 
 (AI failure detection settings; local reporting only. Changing them is
@@ -428,8 +437,11 @@ cloud-only.)
 
 ### 6.9 `peripherie`, `extfilbox`, `print`
 
-- `peripherie` (sic) — which peripherals are fitted (`camera`, `ace`, `usb_disk`
-  booleans). Ask for it: it is how a client knows a camera exists.
+- `peripherie` (sic) — which peripherals are fitted. Keys are **`camera`,
+  `multiColorBox` (the ACE) and `udisk` (USB stick)**, each `1` fitted / `0`
+  not. Ask for it: it is how a client knows a camera exists. Captured live,
+  Kobra S1, 2026-09-28:
+  `{"type": "peripherie", "action": "query", "state": "done", "code": 200, "data": {"camera": 1, "multiColorBox": 1, "udisk": 1}}`
 - `extfilbox` — external filament holder; printers without one stay silent.
 - `print` — answers only while a job exists; silent when idle. The job is
   also inside `info.project`, which is the more reliable source.
