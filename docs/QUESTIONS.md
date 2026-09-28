@@ -204,3 +204,5 @@ authorises uploads to the printer (see `PROTOCOL.md` §2, now listing
 upload URL nor its token, whatever key spelling carries it.
 
 **Library side (implementation team, 2026-09-28):** `DiscoveryInfo.as_redacted_dict()` now also redacts `fileUploadurl` (any case, at any depth), with a test that the dump contains neither the URL nor its token. The core integration should build its diagnostics from that method rather than from the raw document; that change belongs to the core branch.
+
+**Fixed on core branch cfb7317c9b89c036b99f633eddd8967f0f1c0913.**

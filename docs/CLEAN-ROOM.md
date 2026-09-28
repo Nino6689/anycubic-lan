@@ -44,6 +44,7 @@ Rules:
 | 2026-09-28 | Implementation | Claude cloud session (routine, round 3) | `docs/QUESTIONS.md` (HW1–HW3), `docs/PROTOCOL.md` (corrected §2, §6.8, §6.9), this branch's code and tests (no web searches, no Anycubic code) | Fixes for HW1–HW3 in `reports.py`, `client.py` docstring and `README.md`; tests from the live captures; "Fixed" notes in `QUESTIONS.md`; this row | Yes |
 
 | 2026-09-28 | Specification | Claude (local) | The core branch run against the Kobra S1 in a throwaway Home Assistant; the library re-run after round 3 | HW1–HW2 confirmed fixed on hardware; HW4 reported; `PROTOCOL.md` §2 discovery fields added | n/a — specification team |
+| 2026-09-28 | Implementation | Claude cloud session (core integration, round 2) | `docs/QUESTIONS.md` (HW4), `docs/PROTOCOL.md` §2 and §6.1, this library's source at `3f8ac33` (`DiscoveryInfo.as_redacted_dict`, `parse_discovery`); core's own code and dev tooling for house style (no web searches, no Anycubic code) | Core branch `anycubic-integration` `68757a01` (diagnostics redact `fileUploadurl` by key, use the library's redacted discovery copy, scrub any string containing `gcode_upload?s=`) and `cfb7317c` (discovery fixture refreshed with the live fields and a string `modelId`, regression test, snapshot); "Fixed on core branch" note under HW4; this row | Yes |
 
 ## Similarity checks
 
