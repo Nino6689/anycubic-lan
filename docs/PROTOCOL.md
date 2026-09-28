@@ -411,7 +411,7 @@ Queried with action **`getInfo`** (it stays silent for `query`); the reply's
 | Field | Notes |
 |---|---|
 | `id` | Box index, 0-based. Several boxes may be reported (two ACE units observed; a Kobra X can chain up to four). |
-| `model_id` | `40002` = ACE Pro (observed on both printers) |
+| `model_id` | `40001` = ACE Pro (Nino's Kobra S1, observed live 2026-09-28). `40002` = a different ACE unit, reported by a Kobra S1 owner (name to be confirmed, hass-anycubic #41). Treat unknown ids as a generic ACE. |
 | `temp` | Box temperature °C |
 | `loaded_slot` | Slot index feeding the printer; **`-1` = none reported**. On the S1 it can read `-1` while a slot's own `status` is `5`; then the slot with status 5 is the loaded one. On the Kobra X users report it freezes after many swaps (the vendor's own slicer shows the same) — treat as best-effort. |
 | `auto_feed` | Runout refill, 0/1 |
