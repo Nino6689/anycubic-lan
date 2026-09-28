@@ -203,6 +203,26 @@ def test_parse_discovery() -> None:
     assert redacted["modelId"] == 20025
 
 
+def test_redacted_dict_hides_signed_upload_url() -> None:
+    # HW4: fileUploadurl carries a token that authorises uploads.
+    upload = "http://10.0.66.28:18910/gcode_upload?s=SIGNED"
+    info = parse_discovery(
+        {
+            **DISCOVERY,
+            "fileUploadurl": upload,
+            "rtspUrl": "http://10.0.66.28:18088/flv",
+            "urls": {"FileUploadURL": upload},
+        }
+    )
+    redacted = info.as_redacted_dict()
+    dumped = json.dumps(redacted)
+    assert upload not in dumped
+    assert "SIGNED" not in dumped
+    assert TOKEN not in dumped
+    assert redacted["rtspUrl"] == "http://10.0.66.28:18088/flv"
+    assert redacted["urls"] == {"FileUploadURL": "**REDACTED**"}
+
+
 def test_parse_discovery_optional_fields_absent() -> None:
     minimal = {k: DISCOVERY[k] for k in ("ctrlType", "token", "ctrlInfoUrl", "modelId")}
     info = parse_discovery(minimal)

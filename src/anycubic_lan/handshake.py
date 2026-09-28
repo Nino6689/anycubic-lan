@@ -83,11 +83,28 @@ class DiscoveryInfo:
         return mac_from_usn(self.usn) if self.usn else None
 
     def as_redacted_dict(self) -> dict[str, Any]:
-        """The raw document with ``token``, ``cn`` and ``usn`` redacted."""
-        return {
-            key: _REDACTED if key in ("token", "cn", "usn") else value
-            for key, value in self.raw.items()
-        }
+        """The raw document with secrets and identifiers redacted.
+
+        ``token``, ``cn``, ``usn`` and the signed upload URL
+        (``fileUploadurl``, whose ``s`` parameter authorises uploads;
+        PROTOCOL.md §2, HW4) are replaced, at any depth and whatever the
+        case of the key.
+        """
+        return _redact(self.raw)
+
+
+_REDACT_KEYS = frozenset({"token", "cn", "usn", "fileuploadurl"})
+
+
+def _redact(document: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        key: _REDACTED
+        if key.lower() in _REDACT_KEYS
+        else _redact(value)
+        if isinstance(value, Mapping)
+        else value
+        for key, value in document.items()
+    }
 
 
 @dataclass(frozen=True, slots=True)
