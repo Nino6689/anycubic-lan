@@ -71,6 +71,9 @@ Fields:
 | `usn` | A URN containing the printer's MAC, e.g. `uuid:fdm:A4-E8-8D-80-54-C8`. The MAC is the six hex pairs; normalise as needed. May be absent. |
 | `modelName` | Human-readable model. May be absent. |
 | `deviceType` | `"fdm"` on the tested printers. |
+| `ip`, `deviceName`, `zone`, `env` | Also present on a Kobra S1 (firmware 2.7.2.7, observed 2026-09-28): the printer's address, display name, `"global"`, `"prod"`. |
+| `rtspUrl` | The camera stream URL (HTTP-FLV, port 18088), same as `info.urls.rtspUrl`. |
+| `fileUploadurl` | **Secret.** A signed G-code upload URL, `http://<host>:18910/gcode_upload?s=<token>`. The `s` token authorises uploading files to the printer, so treat the whole URL like a password: redact it in logs and diagnostics. Note the spelling: `fileUploadurl`, lower-case `url`. The same URL also arrives as `info.urls.fileUploadurl` (§6.1). |
 
 **Required** for the handshake: `token`, `ctrlInfoUrl`, `modelId`. Older models
 (Kobra 2 and earlier) answer on this port with a different, unsigned document
@@ -278,7 +281,7 @@ Captured, Kobra S1 idle:
 | `version` | Firmware version string |
 | `state` | `free` = idle/available; `busy` = printing or otherwise occupied. Other values may appear; keep the raw string. |
 | `urls.rtspUrl` | Despite the name, an **HTTP-FLV** camera stream URL on port 18088 |
-| `urls.fileUploadurl` | Signed upload URL (not needed for monitoring) |
+| `urls.fileUploadurl` | **Secret**: the signed upload URL, same as the discovery document's `fileUploadurl` (§2). Not needed for monitoring; redact it. |
 | `temp.*` | Integers, °C. `curr_*` actual, `target_*` setpoint. Some models add `curr_chamber_temp` / `target_chamber_temp`; the Kobra S1 reports `0` for chamber (it has none) — treat "absent" and "always 0 on a chamberless model" as no chamber. |
 | `print_speed_mode` | Integer speed preset (1 silent, 2 standard, 3 sport observed on S1; treat unknown values as raw). |
 | `fan_speed_pct`, `aux_fan_speed_pct` | 0–100 |

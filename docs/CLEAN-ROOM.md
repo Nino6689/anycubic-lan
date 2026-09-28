@@ -43,6 +43,8 @@ Rules:
 | 2026-09-28 | Specification | Claude (local) | Nino's Kobra S1 in LAN Mode; the v0.1.0 branch's public API (black-box script, not committed) | Hardware report HW1–HW3 in `QUESTIONS.md`; corrections to `PROTOCOL.md` §2, §6.8, §6.9 and the Q5 answer | n/a — specification team |
 | 2026-09-28 | Implementation | Claude cloud session (routine, round 3) | `docs/QUESTIONS.md` (HW1–HW3), `docs/PROTOCOL.md` (corrected §2, §6.8, §6.9), this branch's code and tests (no web searches, no Anycubic code) | Fixes for HW1–HW3 in `reports.py`, `client.py` docstring and `README.md`; tests from the live captures; "Fixed" notes in `QUESTIONS.md`; this row | Yes |
 
+| 2026-09-28 | Specification | Claude (local) | The core branch run against the Kobra S1 in a throwaway Home Assistant; the library re-run after round 3 | HW1–HW2 confirmed fixed on hardware; HW4 reported; `PROTOCOL.md` §2 discovery fields added | n/a — specification team |
+
 ## Similarity checks
 
 | Date | Artefact | Compared against | Longest identical run (non-blank, non-comment lines) | Result |

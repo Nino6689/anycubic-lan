@@ -184,3 +184,21 @@ should fire. Either fire it on the first connection too, or change the README
 example so it only claims lost/restored.
 
 **Fixed (implementation team, 2026-09-28):** the listener keeps its lost/restored meaning (the first connection is the outcome of `connect()` itself); the README example and the method docstring now say so.
+
+## HW4 — core integration: diagnostics expose the signed upload URL
+
+*Reported by the specification team, 2026-09-28, from running the core branch
+`anycubic-integration` (head `454df85`) against the Kobra S1 in a test Home
+Assistant.* Setup flow, all 15 enabled sensors, entry reload and unload all
+worked against the real printer, and every reading matched an independent
+source.
+
+**Observed:** the diagnostics download contains the raw discovery document,
+including `"fileUploadurl": "http://<host>:18910/gcode_upload?s=<token>"` in
+clear. The parsed state's `file_upload_url` is correctly redacted; the raw
+discovery copy is not.
+**Expected:** no signed upload URL anywhere in diagnostics. The `s` token
+authorises uploads to the printer (see `PROTOCOL.md` §2, now listing
+`fileUploadurl` and the other discovery fields seen live).
+**Suggested check:** a test that the dumped diagnostics contain neither the
+upload URL nor its token, whatever key spelling carries it.
