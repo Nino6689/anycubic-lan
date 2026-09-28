@@ -193,6 +193,9 @@ class AnycubicLanClient:
         """Call ``callback(False)`` when the connection is lost and
         ``callback(True)`` when it is restored, once per transition.
 
+        The first connection made by :meth:`connect` is not reported: its
+        success or failure is the outcome of that call.
+
         Returns a function that removes the listener.
         """
         self._connection_listeners.append(callback)

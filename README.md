@@ -42,7 +42,8 @@ async def main() -> None:
     client.add_state_listener(
         lambda state: print(state.status, state.temperatures.nozzle, state.job)
     )
-    client.add_connection_listener(lambda up: print("connected" if up else "lost"))
+    # Fires on changes after connect(): False when lost, True when restored.
+    client.add_connection_listener(lambda up: print("restored" if up else "lost"))
 
     await client.connect()  # subscribes and sends every query
     try:
