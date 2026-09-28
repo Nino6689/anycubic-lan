@@ -319,7 +319,7 @@ Captured mid-print, Kobra S1:
 | `curr_layer`, `total_layers` | Integers |
 | `print_time` | Minutes elapsed |
 | `remain_time` | Minutes remaining |
-| `supplies_usage` | Filament used so far (grams on the S1) |
+| `supplies_usage` | Filament extruded so far, in **millimetres** (convert to grams with the material's density and a 1.75 mm diameter). An earlier version of this document said grams; that was wrong. |
 | `pause` | `0`/`1` |
 | `state` | Text: `printing`, `auto_leveling`, `paused`, `finished`, … |
 | `print_status` | Integer, see below |
@@ -496,6 +496,7 @@ Same topic; the envelope carries a millisecond `timestamp` and a fresh
 | Jog axis | `axis` / `move` | axis and distance |
 | Motors off | `axis` / `turnOff` | — |
 | Query position | `axis` / `query` | — |
+| Start the camera stream | `video` / `startCapture` | `{}` — the printer answers with a `video` report; the stream is then served at `info.urls.rtspUrl` (HTTP-FLV) |
 | ACE drying | `multiColorBox` / `setDry` | box id, temperature, duration |
 | ACE feed | `multiColorBox` / `feedFilament` | box id, slot index |
 | ACE slot info | `multiColorBox` / `setInfo` | slot material/colour |
