@@ -87,6 +87,8 @@ string of digits, is accepted; anything else is "unsupported printer".
 
 **Answer (specification team, 2026-09-26):** In the discovery document `modelId` is a JSON **integer** on both tested printers (`20025`, `20030`). In topics it appears as the same digits. Accepting a digit string too is fine.
 
+**Correction (specification team, 2026-09-28, from live hardware):** the answer above was wrong for the Kobra S1: its discovery document sends `"modelId": "20025"`, a **string**. Accepting both, as the library already does, is exactly right; no change needed.
+
 **Applied in round 2.**
 
 ## Q6 — `ctrlType` values other than `lan` / `cloud`
@@ -137,3 +139,42 @@ brightness resends the last known one, or 100.
 **Answer (specification team, 2026-09-26):** Switching **off** sends `{"type": 2, "status": 0, "brightness": 0}` — brightness **0** — and this has driven real hardware. Switching on sends `status: 1` with the requested brightness, or **100** when none is given. Do not rely on the printer remembering a previous brightness.
 
 **Applied in round 2.**
+
+---
+
+# Hardware validation — 2026-09-28
+
+*Reported by the specification team.* The v0.1.0 branch (head `edae213`) was run
+against a real Kobra S1 (firmware 2.7.2.7, one ACE Pro, LAN Mode) through the
+public API only: handshake, connect, three polls over ~45 s, light off and on.
+
+**Worked:** handshake (0.02 s), connect (0.13 s), 32 state updates, firmware,
+printer state, temperatures, fans, speed mode, camera URL, head position, the
+finished last job, all four ACE slots with material/colour/SKU, light off and
+on (state followed each command within 4 s), clean disconnect. No crash, no
+exception, no discarded report.
+
+Two reports parsed to empty, both because `PROTOCOL.md` described them wrongly
+(now corrected in §6.8 and §6.9):
+
+## HW1 — `aiSettings` parses to all `None`
+
+**Observed:** `state.ai_settings` has `status`, `type`, `count`, `notice_type`
+and `sensitivity_level` all `None`, although the printer answered the query.
+**Expected:** `status 0, type 2, count 60, notice_type [0, 1],
+sensitivity_level [1, 1]`. **Why:** the settings sit under
+`data.ai_settings`; see the captured payload in `PROTOCOL.md` §6.8.
+
+## HW2 — `peripherals.ace` and `peripherals.usb_disk` are `None`
+
+**Observed:** `camera` is `True`, `ace` and `usb_disk` are `None`.
+**Expected:** all three `True` on this printer. **Why:** the printer's keys are
+`multiColorBox` and `udisk`, not `ace` and `usb_disk`; see `PROTOCOL.md` §6.9.
+
+## HW3 — connection listener gets no event for the first connection (question)
+
+**Observed:** a listener registered before `connect()` received no call when
+the first connection came up; `is_connected` was `True`. **Expected:** unclear
+— the README example prints "connected" from the listener, which suggests it
+should fire. Either fire it on the first connection too, or change the README
+example so it only claims lost/restored.

@@ -66,7 +66,7 @@ Fields:
 | `ctrlType` | `"lan"` when LAN Mode is on. **`"cloud"` when LAN Mode is off** — the printer answers but will not hand out credentials. Treat as "not in LAN Mode". |
 | `token` | 32 characters. Used for signing and decryption (§3). Changes over time. |
 | `ctrlInfoUrl` | Absolute URL of the control endpoint for step 2. Use it as given. |
-| `modelId` | Integer model id (see §9). |
+| `modelId` | Model id (see §9). **Sent as a string of digits** (`"20025"`) by a Kobra S1 on firmware 2.7.2.7, observed live 2026-09-28; accept an integer too. |
 | `cn` | Serial number. May be absent. |
 | `usn` | A URN containing the printer's MAC, e.g. `uuid:fdm:A4-E8-8D-80-54-C8`. The MAC is the six hex pairs; normalise as needed. May be absent. |
 | `modelName` | Human-readable model. May be absent. |
@@ -420,8 +420,13 @@ Fields that read `0` on this hardware and carry no information: box
 
 ### 6.8 `aiSettings`
 
+The settings are **nested under `data.ai_settings`**, not directly in `data`.
+Captured live, Kobra S1, 2026-09-28:
+
 ```json
-{"status": 3, "type": 2, "count": 60, "notice_type": [0, 1], "sensitivity_level": [1, 1]}
+{"type": "aiSettings", "action": "query", "state": "done", "code": 200, "msg": "done",
+ "data": {"ai_settings": {"status": 0, "type": 2, "count": 60,
+                          "notice_type": [0, 1], "sensitivity_level": [1, 1]}}}
 ```
 
 (AI failure detection settings; local reporting only. Changing them is
@@ -429,8 +434,11 @@ cloud-only.)
 
 ### 6.9 `peripherie`, `extfilbox`, `print`
 
-- `peripherie` (sic) — which peripherals are fitted (`camera`, `ace`, `usb_disk`
-  booleans). Ask for it: it is how a client knows a camera exists.
+- `peripherie` (sic) — which peripherals are fitted. Keys are **`camera`,
+  `multiColorBox` (the ACE) and `udisk` (USB stick)**, each `1` fitted / `0`
+  not. Ask for it: it is how a client knows a camera exists. Captured live,
+  Kobra S1, 2026-09-28:
+  `{"type": "peripherie", "action": "query", "state": "done", "code": 200, "data": {"camera": 1, "multiColorBox": 1, "udisk": 1}}`
 - `extfilbox` — external filament holder; printers without one stay silent.
 - `print` — answers only while a job exists; silent when idle. The job is
   also inside `info.project`, which is the more reliable source.
