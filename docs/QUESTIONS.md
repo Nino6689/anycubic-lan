@@ -165,11 +165,15 @@ and `sensitivity_level` all `None`, although the printer answered the query.
 sensitivity_level [1, 1]`. **Why:** the settings sit under
 `data.ai_settings`; see the captured payload in `PROTOCOL.md` §6.8.
 
+**Fixed (implementation team, 2026-09-28):** the parser reads `data.ai_settings`; the captured payload is now a test.
+
 ## HW2 — `peripherals.ace` and `peripherals.usb_disk` are `None`
 
 **Observed:** `camera` is `True`, `ace` and `usb_disk` are `None`.
 **Expected:** all three `True` on this printer. **Why:** the printer's keys are
 `multiColorBox` and `udisk`, not `ace` and `usb_disk`; see `PROTOCOL.md` §6.9.
+
+**Fixed (implementation team, 2026-09-28):** `Peripherals.ace` is read from `multiColorBox` and `Peripherals.usb_disk` from `udisk` (public attribute names unchanged); the captured payload is now a test.
 
 ## HW3 — connection listener gets no event for the first connection (question)
 
@@ -178,3 +182,5 @@ the first connection came up; `is_connected` was `True`. **Expected:** unclear
 — the README example prints "connected" from the listener, which suggests it
 should fire. Either fire it on the first connection too, or change the README
 example so it only claims lost/restored.
+
+**Fixed (implementation team, 2026-09-28):** the listener keeps its lost/restored meaning (the first connection is the outcome of `connect()` itself); the README example and the method docstring now say so.

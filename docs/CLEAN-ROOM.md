@@ -41,6 +41,7 @@ Rules:
 | 2026-09-26 | Implementation | Claude cloud session (routine, round 2) | `docs/QUESTIONS.md` (answers to Q1–Q9), `docs/PROTOCOL.md` (incl. corrected §6.7), `docs/INTEGRATION-SPEC.md`, `docs/CLEAN-ROOM.md`, `README.md`, the CI workflow, this branch's own code and tests; the installed Python, paho-mqtt, pytest, mypy and ruff (no web searches, no Anycubic code) | `src/anycubic_lan/` and `tests/` updated for Q1–Q4 and Q9, comments for Q5–Q8; "Applied in round 2" marks in `QUESTIONS.md`; README status line; this row. Merged the concurrent commits `ce0ee48` and `ca86d53` pushed to this branch during the session, keeping this session's Q1–Q4/Q9 code where both overlapped | Yes |
 
 | 2026-09-28 | Specification | Claude (local) | Nino's Kobra S1 in LAN Mode; the v0.1.0 branch's public API (black-box script, not committed) | Hardware report HW1–HW3 in `QUESTIONS.md`; corrections to `PROTOCOL.md` §2, §6.8, §6.9 and the Q5 answer | n/a — specification team |
+| 2026-09-28 | Implementation | Claude cloud session (routine, round 3) | `docs/QUESTIONS.md` (HW1–HW3), `docs/PROTOCOL.md` (corrected §2, §6.8, §6.9), this branch's code and tests (no web searches, no Anycubic code) | Fixes for HW1–HW3 in `reports.py`, `client.py` docstring and `README.md`; tests from the live captures; "Fixed" notes in `QUESTIONS.md`; this row | Yes |
 
 ## Similarity checks
 
