@@ -46,6 +46,8 @@ Rules:
 | 2026-09-28 | Specification | Claude (local) | The core branch run against the Kobra S1 in a throwaway Home Assistant; the library re-run after round 3 | HW1–HW2 confirmed fixed on hardware; HW4 reported; `PROTOCOL.md` §2 discovery fields added | n/a — specification team |
 | 2026-09-28 | Implementation | Claude cloud session (core integration, round 2) | `docs/QUESTIONS.md` (HW4), `docs/PROTOCOL.md` §2 and §6.1, this library's source at `3f8ac33` (`DiscoveryInfo.as_redacted_dict`, `parse_discovery`); core's own code and dev tooling for house style (no web searches, no Anycubic code) | Core branch `anycubic-integration` `68757a01` (diagnostics redact `fileUploadurl` by key, use the library's redacted discovery copy, scrub any string containing `gcode_upload?s=`) and `cfb7317c` (discovery fixture refreshed with the live fields and a string `modelId`, regression test, snapshot); "Fixed on core branch" note under HW4; this row | Yes |
 
+| 2026-09-28 | Specification | Claude (local) | Core branch `cfb7317` and library `5b8b406`, both run against the Kobra S1 | HW1, HW2 and HW4 confirmed fixed on hardware (HW3 settled by documentation); similarity rechecked | n/a — specification team |
+
 ## Similarity checks
 
 | Date | Artefact | Compared against | Longest identical run (non-blank, non-comment lines) | Result |
@@ -53,3 +55,7 @@ Rules:
 | 2026-09-26 | `src/anycubic_lan/` @ `b7c0042` | `hass-anycubic` integration, `anycubic-cloud-api` library, `WaresWichall/hass-anycubic_cloud` | 6 — alphabetised stdlib imports (`hashlib, json, re, secrets, string, time`); next 4 — the standard `ssl` no-verification idiom | Clean: both are dictated by the language, not copied expression |
 | 2026-09-26 | `tests/` @ `b7c0042` | the same, plus `anycubic-cloud-api/tests` | 15 — the captured `info.project` payload | Expected: data captured from a printer, copied from `PROTOCOL.md` §6.2 |
 | 2026-09-26 | `src/anycubic_lan/` @ `b87f11e` (after round 2) | same three projects | 6 — the same stdlib import block; next 4 — the same `ssl` idiom | Clean; unchanged by round 2 |
+| 2026-09-28 | `src/anycubic_lan/` @ `5b8b406` (after hardware fixes) | same three projects | 6 — the same stdlib import block | Clean; unchanged by rounds 3–4 |
+| 2026-09-28 | core `homeassistant/components/anycubic/` @ `cfb7317` (after HW4) | same three projects | 5 — HA's sensor import block | Clean; unchanged by the HW4 fix |
+| 2026-09-28 | core `tests/components/anycubic/` @ `cfb7317` | the same, plus both GPL test suites | 2 | Clean |
+
