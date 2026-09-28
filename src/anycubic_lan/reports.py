@@ -460,7 +460,11 @@ class AiSettings:
 
 @dataclass(frozen=True, slots=True)
 class Peripherals:
-    """Which peripherals are fitted (PROTOCOL.md §6.9)."""
+    """Which peripherals are fitted (PROTOCOL.md §6.9).
+
+    ``ace`` comes from the printer's ``multiColorBox`` key and ``usb_disk``
+    from ``udisk``.
+    """
 
     camera: bool | None = None
     ace: bool | None = None
@@ -766,7 +770,8 @@ def _parse_multi_color_box(
 
 
 def _parse_ai_settings(envelope: Envelope, data: Mapping[str, Any] | None) -> Report:
-    data = data or {}
+    # The settings sit under ``data.ai_settings`` (PROTOCOL.md §6.8; HW1).
+    data = _map((data or {}).get("ai_settings")) or {}
     return AiSettingsReport(
         envelope,
         settings=AiSettings(
@@ -784,9 +789,11 @@ def _parse_peripherals(envelope: Envelope, data: Mapping[str, Any] | None) -> Re
     return PeripheralsReport(
         envelope,
         peripherals=Peripherals(
+            # The printer's keys are ``camera``, ``multiColorBox`` and ``udisk``,
+            # each 1 or 0 (PROTOCOL.md §6.9; HW2).
             camera=_bool(data.get("camera")),
-            ace=_bool(data.get("ace")),
-            usb_disk=_bool(data.get("usb_disk")),
+            ace=_bool(data.get("multiColorBox")),
+            usb_disk=_bool(data.get("udisk")),
         ),
     )
 

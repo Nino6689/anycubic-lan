@@ -30,11 +30,12 @@ from anycubic_lan.reports import (
 
 from .payloads import (
     ACE_BOX,
-    AI_SETTINGS,
+    AI_SETTINGS_REPORT,
     AXIS_COORDINATES,
     ENVELOPE,
     FAN,
     INFO_IDLE,
+    PERIPHERIE_REPORT,
     PROJECT,
     TEMPATURE,
     info_with,
@@ -605,29 +606,49 @@ def test_multi_color_box_without_boxes() -> None:
 
 
 def test_ai_settings() -> None:
-    report = _parse(message("aiSettings", AI_SETTINGS))
+    report = _parse(AI_SETTINGS_REPORT)
     assert isinstance(report, AiSettingsReport)
     s = report.settings
-    assert (s.status, s.type, s.count) == (3, 2, 60)
+    assert (s.status, s.type, s.count) == (0, 2, 60)
     assert s.notice_type == (0, 1)
     assert s.sensitivity_level == (1, 1)
 
 
 def test_ai_settings_bad_lists() -> None:
     report = _parse(
-        message("aiSettings", {"notice_type": "x", "sensitivity_level": [1, "a"]})
+        message(
+            "aiSettings",
+            {"ai_settings": {"notice_type": "x", "sensitivity_level": [1, "a"]}},
+        )
     )
     assert report.settings.notice_type is None
     assert report.settings.sensitivity_level == (1,)
 
 
+def test_ai_settings_flat_data_is_not_read() -> None:
+    # HW1: the settings are nested; a flat ``data`` carries none of them.
+    report = _parse(message("aiSettings", {"status": 3, "count": 60}))
+    assert report.settings.status is None
+    assert report.settings.count is None
+    assert _parse(message("aiSettings", {"ai_settings": "x"})).settings.type is None
+
+
 def test_peripherie() -> None:
-    report = _parse(
-        message("peripherie", {"camera": True, "ace": True, "usb_disk": False})
-    )
+    report = _parse(PERIPHERIE_REPORT)
     assert isinstance(report, PeripheralsReport)
     p = report.peripherals
-    assert (p.camera, p.ace, p.usb_disk) == (True, True, False)
+    assert (p.camera, p.ace, p.usb_disk) == (True, True, True)
+
+
+def test_peripherie_not_fitted_and_old_key_names() -> None:
+    report = _parse(
+        message("peripherie", {"camera": 0, "multiColorBox": 0, "udisk": 0})
+    )
+    p = report.peripherals
+    assert (p.camera, p.ace, p.usb_disk) == (False, False, False)
+    # HW2: ``ace`` / ``usb_disk`` are not the printer's key names.
+    old = _parse(message("peripherie", {"ace": 1, "usb_disk": 1})).peripherals
+    assert (old.ace, old.usb_disk) == (None, None)
 
 
 def test_peripherie_without_data() -> None:
@@ -679,3 +700,15 @@ def test_speed_mode_enum() -> None:
     assert SpeedMode.from_raw(3) is SpeedMode.SPORT
     assert SpeedMode.from_raw(9) is None
     assert SpeedMode.from_raw(True) is None
+
+
+@pytest.mark.parametrize("raw", [2, -1, "1", None])
+def test_peripherie_unexpected_value_is_unknown(raw: object) -> None:
+    report = _parse(message("peripherie", {"camera": raw, "udisk": 1}))
+    assert report.peripherals.camera is None
+    assert report.peripherals.usb_disk is True
+
+
+def test_peripherie_accepts_json_booleans() -> None:
+    report = _parse(message("peripherie", {"camera": True, "multiColorBox": False}))
+    assert (report.peripherals.camera, report.peripherals.ace) == (True, False)

@@ -11,10 +11,11 @@ from anycubic_lan.reports import Position, PrinterState, parse_message
 
 from .payloads import (
     ACE_BOX,
-    AI_SETTINGS,
+    AI_SETTINGS_REPORT,
     AXIS_COORDINATES,
     FAN,
     INFO_IDLE,
+    PERIPHERIE_REPORT,
     PROJECT,
     TEMPATURE,
     info_with,
@@ -354,14 +355,15 @@ def test_ace_failed_report_changes_nothing() -> None:
 def test_ai_settings_and_peripherals_merge() -> None:
     state = apply(
         PrinterState(),
-        message("aiSettings", AI_SETTINGS),
-        message("aiSettings", {"count": 30}),
-        message("peripherie", {"camera": True}),
-        message("peripherie", {"ace": True}),
+        AI_SETTINGS_REPORT,
+        message("aiSettings", {"ai_settings": {"count": 30}}),
+        message("peripherie", {"camera": 1}),
+        message("peripherie", {"multiColorBox": 1}),
     )
     assert state.ai_settings is not None
     assert state.ai_settings.count == 30
-    assert state.ai_settings.status == 3
+    assert state.ai_settings.status == 0
+    assert state.ai_settings.notice_type == (0, 1)
     assert state.peripherals is not None
     assert state.has_camera is True
     assert state.peripherals.ace is True
@@ -550,3 +552,13 @@ def test_state_is_immutable_and_apply_returns_new() -> None:
     after = apply(before, INFO_IDLE)
     assert before.firmware_version is None
     assert after is not before
+
+
+def test_live_ai_settings_and_peripherie() -> None:
+    state = apply(PrinterState(), AI_SETTINGS_REPORT, PERIPHERIE_REPORT)
+    assert state.ai_settings is not None
+    assert state.ai_settings.sensitivity_level == (1, 1)
+    assert state.peripherals is not None
+    assert state.has_camera is True
+    assert state.peripherals.ace is True
+    assert state.peripherals.usb_disk is True

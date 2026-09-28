@@ -149,13 +149,31 @@ ACE_BOX: dict[str, Any] = {
     ],
 }
 
-# PROTOCOL.md §6.8
-AI_SETTINGS: dict[str, Any] = {
-    "status": 3,
-    "type": 2,
-    "count": 60,
-    "notice_type": [0, 1],
-    "sensitivity_level": [1, 1],
+# PROTOCOL.md §6.8 (captured live, Kobra S1)
+AI_SETTINGS_REPORT: dict[str, Any] = {
+    "type": "aiSettings",
+    "action": "query",
+    "state": "done",
+    "code": 200,
+    "msg": "done",
+    "data": {
+        "ai_settings": {
+            "status": 0,
+            "type": 2,
+            "count": 60,
+            "notice_type": [0, 1],
+            "sensitivity_level": [1, 1],
+        }
+    },
+}
+
+# PROTOCOL.md §6.9 (captured live, Kobra S1)
+PERIPHERIE_REPORT: dict[str, Any] = {
+    "type": "peripherie",
+    "action": "query",
+    "state": "done",
+    "code": 200,
+    "data": {"camera": 1, "multiColorBox": 1, "udisk": 1},
 }
 
 
