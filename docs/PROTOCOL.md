@@ -485,27 +485,38 @@ Same topic; the envelope carries a millisecond `timestamp` and a fresh
  "msgid": "8f1c…", "data": {"type": 2, "status": 1, "brightness": 100}}
 ```
 
-| Purpose | `type` / `action` | `data` |
+| Purpose | `type` / `action` | `data` (exact) |
 |---|---|---|
 | Pause job | `print` / `pause` | `{"taskid": "<task_id>"}` |
 | Resume job | `print` / `resume` | `{"taskid": "<task_id>"}` |
 | Stop job | `print` / `stop` | `{"taskid": "<task_id>"}` |
-| Light on/off | `light` / `control` | `{"type": 2, "status": 1|0, "brightness": 0–100}` |
-| Set temperatures | `tempature` / `set` | target nozzle / hotbed fields as in §6.3 |
-| Fan speed | `fan` / `setSpeed` | fields as in §6.4 |
-| Jog axis | `axis` / `move` | axis and distance |
-| Motors off | `axis` / `turnOff` | — |
-| Query position | `axis` / `query` | — |
+| Light on/off | `light` / `control` | `{"type": 2, "status": 1\|0, "brightness": 0–100}` (off sends brightness 0) |
+| Set temperatures | `tempature` / `set` | `{"type": T, "target_nozzle_temp": n, "target_hotbed_temp": n}` — **`type` says which figures apply: `0` = nozzle only, `1` = bed only, `2` = both**. Send the unused figure as `0`; with the right `type` it is ignored, it does not switch that heater off. |
+| Fan speed | `fan` / `setSpeed` | exactly **one** of `{"fan_speed_pct": n}`, `{"aux_fan_speed_pct": n}`, `{"box_fan_level": n}` per message |
+| Jog / home axis | `axis` / `move` | `{"axis": A, "move_type": M, "distance": d}` — `axis` 1 = X, 2 = Y, 3 = Z, 4 = X and Y together; `move_type` 0 = minus, 1 = plus, 2 = home; `distance` whole millimetres (0 when homing). Home X/Y = axis 4 + move 2; home Z = axis 3 + move 2. The printer refuses to jog an axis that has not been homed (the reply `state` is `failed`). |
+| Motors off | `axis` / `turnOff` | `null` |
+| Query position | `axis` / `query` | `{}` |
 | Start the camera stream | `video` / `startCapture` | `{}` — the printer answers with a `video` report; the stream is then served at `info.urls.rtspUrl` (HTTP-FLV) |
-| ACE drying | `multiColorBox` / `setDry` | box id, temperature, duration |
-| ACE feed | `multiColorBox` / `feedFilament` | box id, slot index |
-| ACE slot info | `multiColorBox` / `setInfo` | slot material/colour |
-| ACE auto-feed | `multiColorBox` / `setAutoFeed` | box id, on/off |
+| ACE drying start/stop | `multiColorBox` / `setDry` | `{"multi_color_box": [{"id": box, "drying_status": {"status": 1\|0, "target_temp": °C, "duration": minutes, "remain_time": null}}]}` — stop = `status` 0; **always name the box** (`id`) |
+| ACE feed / retract | `multiColorBox` / `feedFilament` | `{"multi_color_box": [{"id": box, "feed_status": {"slot_index": i, "type": F}}]}` — `type` 1 = feed, 2 = retract, 3 = finish |
+| ACE slot material/colour | `multiColorBox` / `setInfo` | `{"multi_color_box": [{"id": box, "slots": [{"index": i, "type": "PLA", "color": [r, g, b]}]}]}` |
+| ACE runout refill | `multiColorBox` / `setAutoFeed` | `{"multi_color_box": [{"id": box, "auto_feed": 0\|1}]}` |
 
-Pause/resume/stop and the light have been exercised on real hardware; the
-exact field names inside `data` for temperature, fan, axis and ACE commands
-should be confirmed against a printer before shipping them (they match the
-cloud's order payloads, which are the same objects).
+The payloads are the same objects the cloud orders carry. Hardware-confirmed
+over LAN on a Kobra S1: pause/resume/stop, light, temperatures (preheat) and
+axis jog/home; drying, feed, slot info and auto-feed are confirmed over the
+cloud with these exact objects.
+
+**Reports that carry more than §6 lists:**
+
+- `print` reports with `action` `start` or `update` and `state` `updated`
+  carry a `data.settings` object with `print_speed_pct`, `print_speed_mode`,
+  `fan_speed_pct`, `target_nozzle_temp`, `target_hotbed_temp` (any may be
+  missing). `print_speed_pct` is only reported there.
+- `extfilbox` (external filament holder) answers with `action` `reportInfo`,
+  `state` `success`, `data`: `{"id": int, "type": "<material>", "color": [r,g,b],
+  "loaded": 0|1, "status_type": ..., "current_status": ...}`. Printers without
+  a holder stay silent.
 
 There is no reboot command in either transport.
 
