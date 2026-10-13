@@ -602,3 +602,27 @@ async def test_send_command_raw() -> None:
     assert payload["msgid"] == msgid
     assert payload["data"] == {}
     await client.disconnect()
+
+
+async def test_box_report_requested_once_per_connection() -> None:
+    # Beta 2, D3: every connection asks for the full ACE box list once,
+    # including a reconnect paho makes on its own.
+    client = AnycubicLanClient(connection())
+    await client.connect()
+    fake = FakeMqtt.instances[-1]
+
+    def box_requests() -> int:
+        return sum(
+            payload == build_query(ReportKind.MULTI_COLOR_BOX)
+            for _, payload in fake.published
+        )
+
+    assert build_query(ReportKind.MULTI_COLOR_BOX)["action"] == "getInfo"
+    assert box_requests() == 1
+    fake.fire_disconnect()
+    await settle()
+    assert box_requests() == 1
+    fake.fire_connect()
+    await settle()
+    assert box_requests() == 2
+    await client.disconnect()
