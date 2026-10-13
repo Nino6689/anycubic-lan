@@ -1014,7 +1014,7 @@ class PrinterState:
             case AxisReport(position=Position() as position):
                 return replace(state, position=position)
             case MultiColorBoxReport(boxes=tuple()):
-                return state._apply_ace(report)
+                return state._apply_ace(report)._retire_channel()
             case AiSettingsReport():
                 return replace(
                     state,
@@ -1136,6 +1136,14 @@ class PrinterState:
             else:
                 known.append(box)
         return replace(self, ace_boxes=tuple(known))
+
+    def _retire_channel(self) -> PrinterState:
+        """Forget the channel once a box's own ``loaded_slot`` has changed
+        since it arrived, so a later return to the old slots cannot revive it.
+        """
+        if self.channel_no is None or self.active_channel is not None:
+            return self
+        return replace(self, channel_no=None, channel_loaded_slots=None)
 
     def _apply_lights(self, report: LightReport) -> PrinterState:
         if report.full_list:

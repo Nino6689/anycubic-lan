@@ -644,7 +644,10 @@ def test_channel_no_is_kept_until_a_box_changes_its_loaded_slot() -> None:
     assert state.active_channel == 4
     # Once the box itself reports a change, it speaks for itself again.
     state = apply(state, ace("autoUpdateInfo", "done", {"id": 0, "loaded_slot": 2}))
-    assert state.channel_no == 4
+    assert state.channel_no is None
+    assert state.active_channel is None
+    # Going back to the old slot does not revive the retired channel.
+    state = apply(state, ace("autoUpdateInfo", "done", {"id": 0, "loaded_slot": 1}))
     assert state.active_channel is None
 
 
