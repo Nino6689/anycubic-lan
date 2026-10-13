@@ -28,6 +28,7 @@ from .models import (
     JOB_PAUSED_STATES,
     JOB_RESUMING_STATES,
     JOB_STOPPING_STATES,
+    PRINT_UPDATED_STATE,
     SLOT_STATUS_LOADED,
     STATE_FAILED,
     PrinterStatus,
@@ -590,6 +591,13 @@ class PrintReport(Report):
     """
 
     job: Job | None = None
+    channel_no: int | None = None
+    """``data.channel_no``: the filament channel now feeding the printer.
+
+    A Kobra X reports filament changes as ``update``/``updated`` reports
+    whose data is only this (Beta 2, D4). Kept as reported: the printer's
+    own numbering, not a box or slot index.
+    """
 
     @property
     def command_failed(self) -> bool:
@@ -664,12 +672,14 @@ def parse_message(
     if not kind:
         return None
 
+    state = _str(message.get("state"))
+    code, msg = _reply_code(kind, state, message)
     envelope = Envelope(
         kind=kind,
         action=_str(message.get("action")),
-        state=_str(message.get("state")),
-        code=_code(message.get("code")),
-        msg=_str(message.get("msg")),
+        state=state,
+        code=code,
+        msg=msg,
         msgid=_str(message.get("msgid")),
         timestamp=_int(message.get("timestamp")),
         topic=topic,
@@ -679,6 +689,31 @@ def parse_message(
     if parser is None:
         return UnknownReport(envelope)
     return parser(envelope, _map(message.get("data")))
+
+
+def _reply_code(
+    kind: str, state: str | None, message: Mapping[str, Any]
+) -> tuple[int | None, str | None]:
+    """The envelope's ``code`` and ``msg``, or a refusal's code inside ``data``.
+
+    An ACE that refuses an order (e.g. a ``setDry`` above its drying limit)
+    may answer with an OK or missing envelope ``code`` and the fault code in
+    ``data.code`` (Beta 2, D2). For a ``multiColorBox`` reply that is not a
+    success, that inner code is taken as the report's code, so it is recorded
+    like any other fault.
+    """
+    code = _code(message.get("code"))
+    msg = _str(message.get("msg"))
+    if (
+        kind == ReportKind.MULTI_COLOR_BOX.value
+        and state not in COMPLETED_STATES
+        and (code is None or code in OK_CODES)
+        and (data := _map(message.get("data"))) is not None
+        and (inner := _code(data.get("code"))) is not None
+        and inner not in OK_CODES
+    ):
+        return inner, _str(data.get("msg")) or msg
+    return code, msg
 
 
 def _parse_info(envelope: Envelope, data: Mapping[str, Any] | None) -> Report:
@@ -803,7 +838,11 @@ def _parse_extfilbox(envelope: Envelope, data: Mapping[str, Any] | None) -> Repo
 
 
 def _parse_print(envelope: Envelope, data: Mapping[str, Any] | None) -> Report:
-    return PrintReport(envelope, job=Job.from_data(data) if data else None)
+    return PrintReport(
+        envelope,
+        job=Job.from_data(data) if data else None,
+        channel_no=_int((data or {}).get("channel_no")),
+    )
 
 
 _PARSERS = {
@@ -867,6 +906,10 @@ class PrinterState:
     external_filament_box: Mapping[str, Any] | None = field(default=None, repr=False)
     errors: Mapping[str, ReportCode] = _EMPTY_ERRORS
     """Open non-OK codes per report kind, oldest first."""
+    channel_no: int | None = None
+    """The last ``channel_no`` a ``print`` report carried (Beta 2, D4)."""
+    channel_loaded_slots: tuple[int | None, ...] | None = None
+    """Each ACE box's own ``loaded_slot`` when :attr:`channel_no` arrived."""
 
     # -- derived values ---------------------------------------------------
 
@@ -926,6 +969,33 @@ class PrinterState:
     @property
     def has_camera(self) -> bool | None:
         return self.peripherals.camera if self.peripherals is not None else None
+
+    @property
+    def active_channel(self) -> int | None:
+        """The reported ``channel_no``, while it is the newest word on it.
+
+        A Kobra X stops updating its ACE's ``loaded_slot`` after the first
+        few filament changes of a print but keeps reporting ``channel_no``
+        (Beta 2, D4). The channel stands until any box's own ``loaded_slot``
+        changes after it; from then on the boxes speak for themselves again.
+        """
+        if self.channel_no is None:
+            return None
+        if self.channel_loaded_slots != _loaded_slots(self.ace_boxes):
+            return None
+        return self.channel_no
+
+    def with_channel(self, channel_no: int) -> PrinterState:
+        """Return a state with ``channel_no`` as the newest channel report.
+
+        For transports that deliver ``print`` reports in another shape (the
+        cloud), so the same rule applies as for a LAN :class:`PrintReport`.
+        """
+        return replace(
+            self,
+            channel_no=channel_no,
+            channel_loaded_slots=_loaded_slots(self.ace_boxes),
+        )
 
     # -- merging ------------------------------------------------------------
 
@@ -1019,19 +1089,39 @@ class PrinterState:
         the job when its data names a task, never clears it, and never brings
         back a job that is already over. A refused command changes nothing
         here; its code is recorded by :meth:`_apply_code`.
+
+        Progress reports (``state`` ``updated``) that name no task apply to
+        the current job, if one is running (Beta 2, D5): a Kobra X never
+        names the task in them. A ``channel_no`` is kept whatever the task
+        (D4).
         """
-        job = report.job
-        if report.command_failed or job is None or job.task_id is None:
+        if report.command_failed:
             return self
+        state = self
+        if report.channel_no is not None:
+            state = state.with_channel(report.channel_no)
+        job = report.job
+        if job is None:
+            return state
+        if job.task_id is None:
+            if (
+                report.envelope.state != PRINT_UPDATED_STATE
+                or state.job is None
+                or state.job.is_finished
+            ):
+                return state
+            # The envelope's "updated" is not a job state: keep the job's own.
+            return replace(state, job=_merge(state.job, job))
         if (job_state := report.job_state) is not None:
             job = replace(job, state=job_state)
-        if self.job is None and job.is_finished:
-            return self
-        return replace(self, job=_merge_job(self.job, job))
+        if state.job is None and job.is_finished:
+            return state
+        return replace(state, job=_merge_job(state.job, job))
 
     def _apply_ace(self, report: MultiColorBoxReport) -> PrinterState:
         boxes = report.boxes or ()
-        if report.envelope.is_failed:
+        if report.envelope.is_failed or report.envelope.is_error:
+            # A refused order (D2) must not look as if it took effect.
             return self
         if report.is_full_list:
             return replace(self, ace_boxes=boxes)
@@ -1059,6 +1149,10 @@ class PrinterState:
             else:
                 lights.append(light)
         return replace(self, lights=tuple(lights))
+
+
+def _loaded_slots(boxes: tuple[AceBox, ...]) -> tuple[int | None, ...]:
+    return tuple(box.loaded_slot_raw for box in boxes)
 
 
 def _merge_job(previous: Job | None, new: Job | None) -> Job | None:
