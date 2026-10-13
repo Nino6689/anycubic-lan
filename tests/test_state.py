@@ -562,3 +562,137 @@ def test_live_ai_settings_and_peripherie() -> None:
     assert state.has_camera is True
     assert state.peripherals.ace is True
     assert state.peripherals.usb_disk is True
+
+
+# -- Beta 2 field reports ----------------------------------------------------
+
+# D5: a Kobra X progress report names no task; an S1 adds a few more fields.
+KOBRA_X_PROGRESS: dict[str, Any] = {
+    "curr_layer": 4,
+    "file_root_path": "/useremain/app/gk/gcodes",
+    "filename": "cube.gcode",
+    "filetype": 1,
+    "print_time": 9,
+    "progress": 71,
+    "remain_time": 30,
+    "settings": {"light": 0},
+    "supplies_usage": 150,
+    "total_layers": 5,
+}
+S1_PROGRESS_EXTRAS: dict[str, Any] = {
+    "display_filename": "cube",
+    "origin3mf": "cube.3mf",
+    "source_info": {"source": "local"},
+    "temp_gcode": "/useremain/tmp/cube.gcode",
+}
+
+
+@pytest.mark.parametrize("extras", [{}, S1_PROGRESS_EXTRAS])
+def test_untasked_progress_report_applies_to_current_job(
+    extras: dict[str, Any], caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level("DEBUG")
+    state = apply(
+        PrinterState(),
+        info_with(state="busy", project=PROJECT),
+        message("print", KOBRA_X_PROGRESS | extras, action="update", state="updated"),
+    )
+    assert state.job is not None
+    assert state.job.task_id == 614707220
+    assert (state.job.progress, state.job.current_layer) == (71, 4)
+    assert (state.job.print_time, state.job.remain_time) == (9, 30)
+    assert state.job.supplies_usage == 150
+    assert state.job.state == "printing"  # "updated" is not a job state
+    assert state.status is PrinterStatus.PRINTING
+    assert not [r for r in caplog.records if r.levelno >= 30]
+
+
+def test_untasked_progress_report_without_a_running_job() -> None:
+    progress = message("print", KOBRA_X_PROGRESS, action="update", state="updated")
+    assert apply(PrinterState(), INFO_IDLE, progress).job is None
+    finished = project_with(print_status=2, state="finished")
+    state = apply(PrinterState(), info_with(project=finished), progress)
+    assert state.job is not None
+    assert state.job.progress == 60  # an over job is not moved
+
+
+# D4: the Kobra X reports filament changes as a bare channel number.
+def channel_report(channel: int) -> dict[str, Any]:
+    return message(
+        "print",
+        {"channel_no": channel, "settings": {"light": 0}},
+        action="update",
+        state="updated",
+    )
+
+
+def test_channel_no_is_kept_until_a_box_changes_its_loaded_slot() -> None:
+    state = apply(
+        PrinterState(),
+        info_with(state="busy", project=PROJECT),
+        ace("getInfo", "success", ACE_BOX | {"loaded_slot": 1}),
+        channel_report(3),
+    )
+    assert state.channel_no == 3
+    assert state.active_channel == 3
+    assert state.job is not None
+    assert state.job.progress == 60
+    # A full list that repeats the stale loaded slot does not override it.
+    state = apply(state, ace("getInfo", "success", ACE_BOX | {"loaded_slot": 1}))
+    assert state.active_channel == 3
+    state = apply(state, channel_report(4))
+    assert state.active_channel == 4
+    # Once the box itself reports a change, it speaks for itself again.
+    state = apply(state, ace("autoUpdateInfo", "done", {"id": 0, "loaded_slot": 2}))
+    assert state.channel_no is None
+    assert state.active_channel is None
+    # Going back to the old slot does not revive the retired channel.
+    state = apply(state, ace("autoUpdateInfo", "done", {"id": 0, "loaded_slot": 1}))
+    assert state.active_channel is None
+
+
+def test_channel_no_without_a_job_and_with_state_helper() -> None:
+    state = apply(PrinterState(), INFO_IDLE, channel_report(2))
+    assert state.active_channel == 2
+    assert PrinterState().active_channel is None
+    assert PrinterState().with_channel(5).active_channel == 5
+
+
+def test_refused_print_report_ignores_channel() -> None:
+    refused = channel_report(3) | {"state": "failed", "code": 10500}
+    assert apply(PrinterState(), refused).channel_no is None
+
+
+# D2: an ACE refusing a drying start, with the code on the envelope or in data.
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        {"state": "failed", "code": 11505},
+        {"state": "failed", "code": 200, "data": {"code": 11505}},
+        {"state": "failed", "data": {"code": 11505, "msg": "too hot"}},
+        {"state": "done", "code": 11505},
+    ],
+)
+def test_refused_drying_start_is_an_error_and_changes_nothing(
+    refusal: dict[str, Any],
+) -> None:
+    order = {"id": 0, "drying_status": {"status": 1, "target_temp": 65}}
+    state = apply(
+        PrinterState(),
+        ace("getInfo", "success", ACE_BOX),
+        ace("setDry", "success", order) | refusal,
+    )
+    assert state.last_error_code == 11505
+    drying = state.ace_boxes[0].drying
+    assert drying is not None
+    assert drying.status == 0
+
+
+def test_data_code_of_a_successful_ace_reply_is_not_a_fault() -> None:
+    state = apply(
+        PrinterState(),
+        message("multiColorBox", {"code": 11505}, action="setDry", state="success"),
+        message("multiColorBox", {"code": "x"}, action="setDry", state="failed"),
+        message("multiColorBox", {"code": 0}, action="setDry", state="failed"),
+    )
+    assert state.last_error_code is None

@@ -31,6 +31,10 @@ COMPLETED_STATES = frozenset({"success", "done"})
 #: Envelope ``state`` of a command the printer refused (Q2).
 STATE_FAILED = "failed"
 
+#: ``print`` report ``state`` of a progress report (``start``/``update``
+#: actions): not a job state.
+PRINT_UPDATED_STATE = "updated"
+
 #: Job ``state`` words meaning the job is over (Q3 in docs/QUESTIONS.md).
 #: ``stoped`` is the firmware's own spelling; both ``canceled`` and
 #: ``cancelled`` occur.
