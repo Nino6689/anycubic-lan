@@ -329,7 +329,8 @@ class AnycubicLanClient:
         if connack is not None and not connack.done():
             connack.set_result(None)
         if was_lost:
-            _LOGGER.info("Connection to printer %s restored", self._connection.host)
+            # Logs name no address or identifier of the printer (Beta 3, D14).
+            _LOGGER.info("Connection to the printer restored")
             self._notify_connection(True)
         self._send_queries()
 
@@ -343,9 +344,7 @@ class AnycubicLanClient:
             )
         if self._connected:
             self._connected = False
-            _LOGGER.warning(
-                "Connection to printer %s lost: %s", self._connection.host, reason
-            )
+            _LOGGER.warning("Connection to the printer lost: %s", reason)
             self._notify_connection(False)
 
     def _handle_message(self, topic: str, payload: bytes) -> None:

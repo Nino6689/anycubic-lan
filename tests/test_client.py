@@ -406,6 +406,8 @@ async def test_connection_lost_and_restored_once(
         assert client.is_connected
     assert caplog.text.count("lost") == 1
     assert caplog.text.count("restored") == 1
+    # No address of the printer in any log line (Beta 3, D14).
+    assert "10.0.66.28" not in caplog.text
     # Resubscribed and re-queried after the reconnect.
     assert fake.subscribed == [f"{REPORT}/#", f"{REPORT}/#"]
     assert len(fake.published) == len(ReportKind)
