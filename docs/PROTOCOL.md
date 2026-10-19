@@ -520,6 +520,40 @@ cloud with these exact objects.
 
 There is no reboot command in either transport.
 
+### 7.3 Listing files and starting a print
+
+Hardware-confirmed on a Kobra S1 (firmware 2.7.2.7, one ACE Pro) in LAN Mode, 2026-10-19.
+
+**Listing the printer's own storage:** `file` / `listLocal` with `{"path": "/"}`. The reply has the same `type`/`action` with
+`state` `done`, `code` 200 and `data`: `{"list_mode": 0, "records": [{"is_dir": false, "filename": "<name>.gcode.3mf",
+"timestamp": <ms>, "size": <bytes>, "plate_number": <n>}, …]}`, newest first. Without `path` the printer stays silent.
+`file` / `listUdisk` with no USB stick fitted produced no `file` reply at all.
+
+**Starting a print from the printer's own storage:** `print` / `start` with this `data`, which started a print (single-material
+file, ACE slot 2):
+
+```json
+{"taskid": "-1", "filename": "<name>.gcode.3mf", "filepath": "/", "filetype": 1,
+ "file_key": "", "file_name": "", "project_type": 1,
+ "task_settings": {"ai_detect": 0, "camera_timelapse": 0},
+ "ams_settings": {"use_ams": true, "ams_box_mapping": [
+   {"paint_index": 0, "ams_index": 1, "paint_color": [26, 26, 26], "ams_color": [26, 26, 26], "material_type": "PLA"}]}}
+```
+
+- `filename` is a `filename` from `listLocal`; `filepath` is the folder (`"/"`); `filetype` 1 = the printer's own storage.
+- `ams_box_mapping` has one entry per filament in the file: `paint_index` is the file's filament (from 0), `ams_index` the ACE
+  slot that feeds it (from 0, so 1 = slot 2), colours as `[r, g, b]`. Whether `ams_index` counts across a second ACE is not known.
+- **The same message without `ams_settings` is refused** with `state` `failed`, `code` **10115** "The device cannot parse the file",
+  `data` `{"localtask": "", "taskid": "-1"}`. Whether `project_type` is required was not isolated (it was present in the message that worked).
+- A message whose structure the printer rejects gets `code` **10110** "json is Invalid", `data` null. That happened with extra fields
+  `url: ""`, `md5: ""`, `filesize` and a `task_settings` of `auto_leveling`, `vibration_compensation`, `flow_calibration`, `dry_mode`, `timelapse`.
+- Accepted: a `print` / `start` report with `state` `preheating`, `code` 200 and `data` naming the file (`filename`,
+  `display_filename`), `origin3mf`, `temp_gcode`, `temp_dir`, `source_type` `"3mf"`, `source_info.plate_index`, `total_layers`,
+  `remain_time` (minutes) and **`taskid` `"-1"`**. The job then reports `printing` and ends with `finished`, and `info.last_project`
+  carries `task_id` -1, `localtask` `""` and `supplies_usage` in millimetres. A print started this way never gets a real task number.
+- Anycubic Slicer Next's own LAN start also carries `url`, `md5` and `filesize` (the printer reports a "downloading" stage for it), which
+  suggests the printer fetches a file from a URL the sender gives. That form has **not** been tried.
+
 ---
 
 ## 8. Network discovery
