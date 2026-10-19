@@ -35,6 +35,24 @@ STATE_FAILED = "failed"
 #: actions): not a job state.
 PRINT_UPDATED_STATE = "updated"
 
+#: ``print`` report ``state`` words of a filament change during a job
+#: (``action`` ``start``; Beta 3, D10). None of them is a job state.
+#: ``extfilbox_…`` is the printer's own feeder, ``ace_…`` an ACE unit.
+FEED_PRINTER_FEEDER_STATE = "extfilbox_filament_feeding"
+FEED_ACE_STATE = "ace_filament_feeding"
+FILAMENT_STEP_STATES = frozenset(
+    {
+        FEED_PRINTER_FEEDER_STATE,
+        FEED_ACE_STATE,
+        "extfilbox_filament_unfeeding",
+        "nozzle_purging",
+    }
+)
+
+#: ``extfilbox`` report ``action`` that carries ``current_filament``
+#: (Beta 3, D13) rather than the external holder.
+EXTFILBOX_AUTO_ACTION = "auto"
+
 #: Job ``state`` words meaning the job is over (Q3 in docs/QUESTIONS.md).
 #: ``stoped`` is the firmware's own spelling; both ``canceled`` and
 #: ``cancelled`` occur.
@@ -106,6 +124,24 @@ class SpeedMode(IntEnum):
             return cls(value)
         except ValueError:
             return None
+
+
+class FeedSource(StrEnum):
+    """Which report said what filament now feeds the printer (Beta 2-3).
+
+    The box is only named by :attr:`CURRENT_FILAMENT` (as a 0-based index)
+    and, for :attr:`ACE`, by the reported unit number, whose base is not
+    confirmed. Mapping a feed to a box is the caller's decision.
+    """
+
+    CHANNEL = "channel"
+    """``print``/``update``/``updated`` with only ``channel_no`` (D4)."""
+    PRINTER_FEEDER = "printer_feeder"
+    """``extfilbox_filament_feeding``: the printer's own feeder (D10)."""
+    ACE = "ace"
+    """``ace_filament_feeding``: an ACE, with ``unit_no`` (D10)."""
+    CURRENT_FILAMENT = "current_filament"
+    """``extfilbox``/``auto``: ``current_filament`` ``"<box>-<slot>"`` (D13)."""
 
 
 class PrinterStatus(StrEnum):

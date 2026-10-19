@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields, replace
 from pathlib import PurePosixPath
@@ -24,6 +25,10 @@ from .models import (
     ACE_FULL_LIST_ACTION,
     COMPLETED_STATES,
     DEFAULT_LIGHT_TYPE,
+    EXTFILBOX_AUTO_ACTION,
+    FEED_ACE_STATE,
+    FEED_PRINTER_FEEDER_STATE,
+    FILAMENT_STEP_STATES,
     JOB_OVER_STATES,
     JOB_PAUSED_STATES,
     JOB_RESUMING_STATES,
@@ -31,6 +36,7 @@ from .models import (
     PRINT_UPDATED_STATE,
     SLOT_STATUS_LOADED,
     STATE_FAILED,
+    FeedSource,
     PrinterStatus,
     PrintStatus,
     ReportKind,
@@ -107,17 +113,27 @@ def _code(value: object) -> int | None:
     return None
 
 
+_WHOLE_TEXT = re.compile(r"-?[0-9]+")
+
+
+def _whole(value: object) -> int | None:
+    """A whole number given as a number or as text (``"-1"``, ``"131189709"``)."""
+    if isinstance(value, str):
+        text = value.strip()
+        return int(text) if _WHOLE_TEXT.fullmatch(text) else None
+    return _int(value)
+
+
 def _task_id(data: Mapping[str, Any]) -> int | None:
     """``task_id`` (``info.project``) or ``taskid`` (``print`` reports, Q2).
 
-    ``taskid`` may be a string of digits, as in the job commands (§7.2).
+    Either may arrive as a number or as text, negative included: a Kobra 4
+    numbers every LAN print ``"-1"`` (Beta 3, D15). The value is kept as
+    read; :attr:`Job.job_id` says whether it names a job.
     """
-    if (task_id := _int(data.get("task_id"))) is not None:
+    if (task_id := _whole(data.get("task_id"))) is not None:
         return task_id
-    raw = data.get("taskid")
-    if isinstance(raw, str) and raw.strip().isdigit():
-        return int(raw.strip())
-    return _int(raw)
+    return _whole(data.get("taskid"))
 
 
 def _merge[T](old: T, new: T) -> T:
@@ -250,6 +266,17 @@ class Job:
         )
 
     @property
+    def job_id(self) -> int | None:
+        """The task id when it names a job: a whole number above 0.
+
+        ``-1`` (every LAN print on a Kobra 4), ``0`` and a missing id name
+        none, so two jobs both numbered ``-1`` are never the same job by
+        their number (Beta 3, D15).
+        """
+        task_id = self.task_id
+        return task_id if task_id is not None and task_id > 0 else None
+
+    @property
     def name(self) -> str | None:
         """File name without directories and extension."""
         if not self.filename:
@@ -316,6 +343,8 @@ class AceDrying:
     """Minutes."""
     remain_time: Number | None = None
     """Minutes."""
+    humidity: Number | None = None
+    """Relative humidity in %, when the report carries it (ACE 2 Pro; D11)."""
 
     @property
     def is_drying(self) -> bool:
@@ -381,6 +410,7 @@ class AceBox:
                 target_temp=_num(raw_drying.get("target_temp")),
                 duration=_num(raw_drying.get("duration")),
                 remain_time=_num(raw_drying.get("remain_time")),
+                humidity=_num(raw_drying.get("humidity")),
             )
         slots: tuple[AceSlot, ...] = ()
         if isinstance(raw_slots := data.get("slots"), list):
@@ -470,6 +500,71 @@ class Peripherals:
     camera: bool | None = None
     ace: bool | None = None
     usb_disk: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FilamentFeed:
+    """What a report said now feeds the printer (Beta 2 D4, Beta 3 D10, D13).
+
+    Facts only: :attr:`slot` counts from 0 within its own box. Which entry of
+    the box list that box is, is left to the caller; see :class:`FeedSource`.
+    """
+
+    source: FeedSource
+    slot: int
+    box: int | None = None
+    """The 0-based box ``current_filament`` names (D13); otherwise ``None``."""
+    unit_no: int | None = None
+    """The ACE unit an ``ace_filament_feeding`` step names, as reported (D10)."""
+
+
+def filament_feed(
+    action: str | None, state: str | None, data: object
+) -> FilamentFeed | None:
+    """The feed a ``print`` report announces, if it announces one.
+
+    - ``start`` / ``extfilbox_filament_feeding``: the printer's own feeder.
+    - ``start`` / ``ace_filament_feeding``: an ACE, ``data.unit_no``.
+    - ``start``/``update`` / ``updated`` with ``channel_no``: a channel with
+      no box named (the Kobra X, D4).
+
+    ``channel_no`` counts from 1 within its box (D10). Unfeed and purge
+    steps, refusals and anything without a whole ``channel_no`` >= 1
+    announce nothing.
+    """
+    body = _map(data)
+    if body is None:
+        return None
+    channel = _whole(body.get("channel_no"))
+    if channel is None or channel < 1:
+        return None
+    if state == FEED_PRINTER_FEEDER_STATE:
+        return FilamentFeed(FeedSource.PRINTER_FEEDER, channel - 1)
+    if state == FEED_ACE_STATE:
+        return FilamentFeed(
+            FeedSource.ACE, channel - 1, unit_no=_whole(body.get("unit_no"))
+        )
+    if state == PRINT_UPDATED_STATE and action in ("start", "update"):
+        return FilamentFeed(FeedSource.CHANNEL, channel - 1)
+    return None
+
+
+_CURRENT_FILAMENT = re.compile(r"([0-9]+)-([0-9]+)")
+
+
+def current_filament(value: object) -> FilamentFeed | None:
+    """``current_filament`` ``"<box>-<slot>"``, both from 0 (D13).
+
+    ``""`` (filament retracted for levelling or wiping) and anything
+    malformed say nothing, so the last known slot stands.
+    """
+    if not isinstance(value, str):
+        return None
+    match = _CURRENT_FILAMENT.fullmatch(value.strip())
+    if match is None:
+        return None
+    box, slot = (int(group) for group in match.groups())
+    return FilamentFeed(FeedSource.CURRENT_FILAMENT, slot, box=box)
 
 
 # --------------------------------------------------------------------------
@@ -576,9 +671,19 @@ class PeripheralsReport(Report):
 
 @dataclass(frozen=True, slots=True)
 class ExternalFilamentBoxReport(Report):
-    """``extfilbox`` report; its shape is undocumented, so only raw data."""
+    """``extfilbox`` report: the external holder, kept as raw data.
+
+    An ``auto`` report is not about the holder: it carries the printer's own
+    ``current_filament`` (Beta 3, D13), read into :attr:`feed`, and leaves
+    the holder as it was.
+    """
 
     data: Mapping[str, Any] | None = field(default=None, repr=False)
+    feed: FilamentFeed | None = None
+
+    @property
+    def is_holder_report(self) -> bool:
+        return self.envelope.action != EXTFILBOX_AUTO_ACTION
 
 
 @dataclass(frozen=True, slots=True)
@@ -592,12 +697,14 @@ class PrintReport(Report):
 
     job: Job | None = None
     channel_no: int | None = None
-    """``data.channel_no``: the filament channel now feeding the printer.
+    """``data.channel_no`` as reported: counted from 1 within its box (D10)."""
+    feed: FilamentFeed | None = None
+    """The filament this report says now feeds the printer (D4, D10)."""
 
-    A Kobra X reports filament changes as ``update``/``updated`` reports
-    whose data is only this (Beta 2, D4). Kept as reported: the printer's
-    own numbering, not a box or slot index.
-    """
+    @property
+    def is_filament_step(self) -> bool:
+        """A filament feed, unfeed or purge step during a job (D10)."""
+        return self.envelope.state in FILAMENT_STEP_STATES
 
     @property
     def command_failed(self) -> bool:
@@ -612,7 +719,12 @@ class PrintReport(Report):
         not job states.
         """
         state = self.envelope.state
-        if state is None or state in COMPLETED_STATES or self.command_failed:
+        if (
+            state is None
+            or state in COMPLETED_STATES
+            or self.command_failed
+            or self.is_filament_step
+        ):
             return None
         return state
 
@@ -658,7 +770,8 @@ def parse_message(
     """
     message = _decode(payload)
     if message is None:
-        _LOGGER.debug("Ignoring non-JSON-object payload on %s", topic)
+        # The topic names the printer: only its report kind is logged (D14).
+        _LOGGER.debug("Ignoring a non-JSON-object %s payload", kind_from_topic(topic))
         return None
 
     raw_type = message.get("type")
@@ -785,13 +898,20 @@ def _parse_axis(envelope: Envelope, data: Mapping[str, Any] | None) -> Report:
 
 def _find_boxes(raw: object) -> list[Any] | None:
     # Q1 in docs/QUESTIONS.md: the boxes are the list under
-    # ``data.multi_color_box``. A bare list as ``data`` is tolerated too.
+    # ``data.multi_color_box``. A bare list as ``data`` is tolerated too, and
+    # so is one box given as an object, there or as ``data`` itself (an ACE
+    # 2 Pro drying report names one box by ``id``; Beta 3, D11).
     if isinstance(raw, list):
         return raw
     if (data := _map(raw)) is None:
         return None
     boxes = data.get("multi_color_box")
-    return boxes if isinstance(boxes, list) else None
+    if isinstance(boxes, list):
+        return boxes
+    if boxes is None:
+        boxes = data
+    box = _map(boxes)
+    return [box] if box is not None and _int(box.get("id")) is not None else None
 
 
 def _parse_multi_color_box(
@@ -834,14 +954,19 @@ def _parse_peripherals(envelope: Envelope, data: Mapping[str, Any] | None) -> Re
 
 
 def _parse_extfilbox(envelope: Envelope, data: Mapping[str, Any] | None) -> Report:
-    return ExternalFilamentBoxReport(envelope, data=data)
+    feed = None
+    if envelope.action == EXTFILBOX_AUTO_ACTION and envelope.is_completed:
+        feed = current_filament((data or {}).get("current_filament"))
+    return ExternalFilamentBoxReport(envelope, data=data, feed=feed)
 
 
 def _parse_print(envelope: Envelope, data: Mapping[str, Any] | None) -> Report:
+    failed = envelope.is_failed or envelope.is_error
     return PrintReport(
         envelope,
         job=Job.from_data(data) if data else None,
-        channel_no=_int((data or {}).get("channel_no")),
+        channel_no=_whole((data or {}).get("channel_no")),
+        feed=None if failed else filament_feed(envelope.action, envelope.state, data),
     )
 
 
@@ -907,7 +1032,11 @@ class PrinterState:
     errors: Mapping[str, ReportCode] = _EMPTY_ERRORS
     """Open non-OK codes per report kind, oldest first."""
     channel_no: int | None = None
-    """The last ``channel_no`` a ``print`` report carried (Beta 2, D4)."""
+    """The last ``channel_no`` a ``print`` report announced as feeding (D4).
+
+    Counted from 1 within its box (Beta 3, D10); which box is not known
+    here. Unfeed and purge steps do not set it.
+    """
     channel_loaded_slots: tuple[int | None, ...] | None = None
     """Each ACE box's own ``loaded_slot`` when :attr:`channel_no` arrived."""
 
@@ -1029,7 +1158,9 @@ class PrinterState:
                     if state.peripherals is not None
                     else report.peripherals,
                 )
-            case ExternalFilamentBoxReport(data=Mapping() as data):
+            case ExternalFilamentBoxReport(data=Mapping() as data) if (
+                report.is_holder_report
+            ):
                 return replace(state, external_filament_box=data)
             case PrintReport():
                 return state._apply_print(report)
@@ -1092,16 +1223,17 @@ class PrinterState:
 
         Progress reports (``state`` ``updated``) that name no task apply to
         the current job, if one is running (Beta 2, D5): a Kobra X never
-        names the task in them. A ``channel_no`` is kept whatever the task
-        (D4).
+        names the task in them. A feeding channel is kept whatever the task
+        (D4). Filament feed, unfeed and purge steps never touch the job
+        (Beta 3, D10).
         """
         if report.command_failed:
             return self
         state = self
-        if report.channel_no is not None:
-            state = state.with_channel(report.channel_no)
+        if report.feed is not None:
+            state = state.with_channel(report.feed.slot + 1)
         job = report.job
-        if job is None:
+        if job is None or report.is_filament_step:
             return state
         if job.task_id is None:
             if (
@@ -1166,17 +1298,17 @@ def _loaded_slots(boxes: tuple[AceBox, ...]) -> tuple[int | None, ...]:
 def _merge_job(previous: Job | None, new: Job | None) -> Job | None:
     """Merge a reported project block into the known job.
 
-    ``None`` (``project: null``) clears the job. The same job (same task id,
-    or an unknown id on either side) is merged field by field, so a
-    ``print_status`` of 0 keeps the previous status. A different task id is a
-    new job and replaces the old one.
+    ``None`` (``project: null``) clears the job. The same job (same job id,
+    or no job id on either side: ``-1`` and ``0`` name none, D15) is merged
+    field by field, so a ``print_status`` of 0 keeps the previous status. A
+    different job id is a new job and replaces the old one.
     """
     if new is None or previous is None:
         return new
     if (
-        new.task_id is not None
-        and previous.task_id is not None
-        and new.task_id != previous.task_id
+        new.job_id is not None
+        and previous.job_id is not None
+        and new.job_id != previous.job_id
     ):
         return new
     return _merge(previous, new)
