@@ -551,8 +551,23 @@ file, ACE slot 2):
   `display_filename`), `origin3mf`, `temp_gcode`, `temp_dir`, `source_type` `"3mf"`, `source_info.plate_index`, `total_layers`,
   `remain_time` (minutes) and **`taskid` `"-1"`**. The job then reports `printing` and ends with `finished`, and `info.last_project`
   carries `task_id` -1, `localtask` `""` and `supplies_usage` in millimetres. A print started this way never gets a real task number.
-- Anycubic Slicer Next's own LAN start also carries `url`, `md5` and `filesize` (the printer reports a "downloading" stage for it), which
-  suggests the printer fetches a file from a URL the sender gives. That form has **not** been tried.
+- **Printing a file the printer does not have yet: give it a URL.** The same message with `filetype` **0**, plus `url` (plain HTTP
+  on the local network), `md5` (lower-case hex of the file) and `filesize` (bytes), made the printer fetch the file itself (one `GET`)
+  and start it. `filename` is the name it is stored under; `filepath` stays `"/"`. Confirmed with a `.gcode.3mf` served from a
+  computer on the same network:
+
+  ```json
+  {"taskid": "-1", "url": "http://<host>:<port>/<file>.gcode.3mf", "md5": "<32 hex>", "filesize": 207906,
+   "filename": "<file>.gcode.3mf", "filepath": "/", "filetype": 0, "project_type": 1, "file_key": "", "file_name": "",
+   "task_settings": {"ai_detect": 0, "camera_timelapse": 0},
+   "ams_settings": {"use_ams": true, "ams_box_mapping": [{"paint_index": 0, "ams_index": 3, "paint_color": [239, 240, 241],
+     "ams_color": [239, 240, 241], "material_type": "PETG"}]}}
+  ```
+
+  `print` / `start` reports followed: `downloading` (`data.progress` 0 → 100), `checking`, then `preheating` with `filename` the name
+  without `.3mf` and `origin3mf` the stored copy. **The file stays in the printer's storage** afterwards.
+- `print` / `stop` with `{"taskid": "-1"}` stops such a job: `stopping`, then `state` `stoped`, `code` 10601 ("user initiated"),
+  and `last_project.state` `stoped` with `supplies_usage` 0.
 
 ---
 
