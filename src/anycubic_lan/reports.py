@@ -396,6 +396,8 @@ class AceBox:
     auto_feed: bool | None = None
     loaded_slot_raw: int | None = None
     temp: Number | None = None
+    humidity: Number | None = None
+    """Relative humidity in %; ``0`` from a box without a sensor (Beta 4, D22)."""
     drying: AceDrying | None = None
     slots: tuple[AceSlot, ...] = ()
     feed_status: int | str | None = None
@@ -426,6 +428,7 @@ class AceBox:
             auto_feed=_bool(data.get("auto_feed")),
             loaded_slot_raw=_int(data.get("loaded_slot")),
             temp=_num(data.get("temp")),
+            humidity=_num(data.get("humidity")),
             drying=drying,
             slots=slots,
             feed_status=_feed_status(data.get("feed_status")),
