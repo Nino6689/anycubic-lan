@@ -573,9 +573,11 @@ file, ACE slot 2):
 
 - **`listLocal` with only `path` is refused** with `code` **10112** "参数设定失败" (parameter setting failed), whatever else is
   added. It needs paging: `{"path": "/", "keyword": "", "page_num": 1, "page_size": 20}`. `page_num` counts from 1; `keyword` may be
-  left out. The reply carries `list_mode` and `records` as on the S1, plus `pages`, `current`, `size` and `total`. A Kobra S1 has not
-  been tried with the paged form.
-- The Kobra 4 stores plain **`.gcode`** files, not `.gcode.3mf`.
+  left out. The reply carries `list_mode` and `records` as on the S1, plus `pages`, `current`, `size` and `total`.
+- **The paged form is safe on a Kobra S1** (firmware 2.7.2.7, LAN Mode, checked 2026-10-21), but the S1 **ignores the paging**:
+  `{"path": "/"}`, the paged form, page size 5, and page 2 of 5 each returned `done`/200 with all 213 records and no
+  `pages`/`total`. So send the paged form to every model, and don't assume a reply holds only `page_size` records.
+- The Kobra 4 stores plain **`.gcode`** files. The S1's storage holds both `.gcode` and `.gcode.3mf`.
 - `print` / `start` from storage (`filetype` 1, `filepath` "/", `project_type` 1, `ams_index` 3 for slot 4) and by URL (`filetype` 0,
   served over plain HTTP) both worked unchanged. Reports went `init` → `checking` → `preheating` → `printing` → `finished` (from
   storage) and `downloading` 0 → 100 → `checking` → `preheating` (by URL), always with `taskid` `"-1"`.
