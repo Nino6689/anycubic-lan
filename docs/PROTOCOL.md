@@ -569,6 +569,23 @@ file, ACE slot 2):
 - `print` / `stop` with `{"taskid": "-1"}` stops such a job: `stopping`, then `state` `stoped`, `code` 10601 ("user initiated"),
   and `last_project.state` `stoped` with `supplies_usage` 0.
 
+**Kobra 4 (field report, firmware 1.2.1.3, ACE 2 Pro, hass-anycubic #40, 2026-10-21).** Not checked on the development printer.
+
+- **`listLocal` with only `path` is refused** with `code` **10112** "参数设定失败" (parameter setting failed), whatever else is
+  added. It needs paging: `{"path": "/", "keyword": "", "page_num": 1, "page_size": 20}`. `page_num` counts from 1; `keyword` may be
+  left out. The reply carries `list_mode` and `records` as on the S1, plus `pages`, `current`, `size` and `total`. A Kobra S1 has not
+  been tried with the paged form.
+- The Kobra 4 stores plain **`.gcode`** files, not `.gcode.3mf`.
+- `print` / `start` from storage (`filetype` 1, `filepath` "/", `project_type` 1, `ams_index` 3 for slot 4) and by URL (`filetype` 0,
+  served over plain HTTP) both worked unchanged. Reports went `init` → `checking` → `preheating` → `printing` → `finished` (from
+  storage) and `downloading` 0 → 100 → `checking` → `preheating` (by URL), always with `taskid` `"-1"`.
+- **The screen thumbnail comes from the G-code itself.** A file without one shows none. A standard block after
+  `; HEADER_BLOCK_END` shows on the Kobra 4 screen: `; THUMBNAIL_BLOCK_START`, `; thumbnail begin 230x110 <length>`, the PNG as
+  base64 in 78-character comment lines, `; thumbnail end`, `; THUMBNAIL_BLOCK_END`. 230×110 is the size the Kobra 4's slicer
+  profile declares.
+- At the end of a print the Kobra 4 retracts and reports its idle `loaded_slot` (slot 1) about 15 s **before** it reports
+  `finished`, while the job still reads printing. See hass-anycubic-next ACCEPTANCE D24.
+
 ---
 
 ## 8. Network discovery
