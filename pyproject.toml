@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "anycubic-lan"
-version = "0.1.2"
+version = "0.1.3"
 description = "Async client for Anycubic 3D printers in LAN Mode (local MQTT, no cloud)."
 readme = "README.md"
 license = "MIT"
